@@ -226,7 +226,7 @@ struct DSMenuLabel: View {
             if width != nil { Spacer(minLength: DS.space1) }
             Image(systemName: "chevron.up.chevron.down")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(DS.inkMuted)
+                .foregroundColor(DS.ink)
         }
         .padding(.horizontal, DS.space2)
         .frame(width: width, height: DS.controlHeight)

@@ -300,64 +300,108 @@ struct ContentView: View {
 
     // MARK: Options
 
-    private func labeled<V: View>(_ title: String, @ViewBuilder _ content: () -> V) -> some View {
+    private let labelWidth: CGFloat = 104
+
+    /// 項目名（左）＋ 操作部品と説明（右）の1行
+    private func settingRow<C: View, H: View>(_ title: String,
+                                              @ViewBuilder control: () -> C,
+                                              @ViewBuilder hint: () -> H) -> some View {
+        HStack(alignment: .top, spacing: DS.space3) {
+            Text(title)
+                .font(DSFont.body)
+                .frame(width: labelWidth, alignment: .leading)
+                .frame(minHeight: DS.controlHeight, alignment: .leading)
+            VStack(alignment: .leading, spacing: DS.space1) {
+                control()
+                hint()
+                    .font(DSFont.caption)
+                    .foregroundColor(DS.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func groupHeader(_ title: String) -> some View {
         HStack(spacing: DS.space2) {
-            Text(title).font(DSFont.body)
-            content()
+            Text(title)
+                .font(DSFont.caption.weight(.semibold))
+                .foregroundColor(DS.inkMuted)
+            Rectangle().fill(DS.divider).frame(height: 1)
         }
     }
 
     private var optionsPane: some View {
         DSPane(title: "設定") {
             VStack(alignment: .leading, spacing: DS.space2) {
-                HStack(spacing: DS.space4) {
-                    labeled("操作") {
-                        DSSegmented(options: OperationMode.allCases,
-                                    selection: $model.operation,
-                                    label: { $0.label })
-                    }
-                    labeled("比較基準") {
-                        DSPopUp(options: CompareMode.allCases,
-                                selection: $model.compare,
-                                width: 190,
-                                label: { $0.label })
-                    }
-                    Toggle("同一ファイルは自動スキップ", isOn: $model.skipIdentical)
-                        .toggleStyle(DSCheckboxStyle())
-                }
-                Text(model.compare.detail)
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.inkMuted)
+                groupHeader("動作")
 
-                HStack(spacing: DS.space4) {
-                    labeled("競合時の動作") {
-                        DSPopUp(options: PolicyChoice.allCases,
-                                selection: $model.policy,
-                                width: 190,
+                settingRow("操作", control: {
+                    DSSegmented(options: OperationMode.allCases,
+                                selection: $model.operation,
                                 label: { $0.label })
+                }, hint: {
+                    if model.operation == .move {
+                        HStack(alignment: .top, spacing: DS.space1) {
+                            Image(systemName: "arrow.right.circle")
+                            Text("コピーして内容を照合したあと、移動元をゴミ箱へ入れます（スキップしたファイルは移動元に残ります）")
+                        }
+                        .foregroundColor(DS.statusNewer)
+                    } else {
+                        Text("コピー元はそのまま残します")
                     }
-                    Toggle("コピー後にSHA-256で照合", isOn: Binding(
+                })
+
+                settingRow("競合時の動作", control: {
+                    DSPopUp(options: PolicyChoice.allCases,
+                            selection: $model.policy,
+                            width: 220,
+                            label: { $0.label })
+                }, hint: {
+                    Text(model.policy.detail)
+                })
+
+                groupHeader("比較")
+
+                settingRow("比較基準", control: {
+                    DSPopUp(options: CompareMode.allCases,
+                            selection: $model.compare,
+                            width: 220,
+                            label: { $0.label })
+                }, hint: {
+                    Text(model.compare.detail)
+                })
+
+                settingRow("同一ファイル", control: {
+                    Toggle("自動でスキップする", isOn: $model.skipIdentical)
+                        .toggleStyle(DSCheckboxStyle())
+                }, hint: {
+                    Text(model.skipIdentical
+                         ? "比較基準で同一と判断したファイルは、確認せずにスキップします"
+                         : "同一でも競合として扱い、上の「競合時の動作」に従います")
+                })
+
+                groupHeader("完了時")
+
+                settingRow("照合", control: {
+                    Toggle("コピー後にSHA-256で照合する", isOn: Binding(
                         get: { model.verify || model.operation == .move },
                         set: { model.verify = $0 }
                     ))
                     .toggleStyle(DSCheckboxStyle())
                     .disabled(model.operation == .move)
-                }
+                }, hint: {
+                    Text(model.operation == .move
+                         ? "移動では、必ず照合してから移動元を消します"
+                         : "コピーした内容が元と一致するかを確かめます（時間がかかります）")
+                })
 
-                Toggle("すべての処理が終わったらウインドウを自動で閉じる", isOn: $model.autoCloseWhenDone)
-                    .toggleStyle(DSCheckboxStyle())
-                Text("エラーや中止のときは閉じません。ウインドウを閉じるとアプリも終了します。")
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.inkMuted)
-
-                if model.operation == .move {
-                    HStack(spacing: DS.space1) {
-                        Image(systemName: "arrow.right.circle")
-                        Text("移動：コピーして内容を照合したあと、移動元をゴミ箱へ入れます（スキップしたファイルは移動元に残ります）。")
-                    }
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.statusNewer)
-                }
+                settingRow("ウインドウ", control: {
+                    Toggle("すべて終わったら自動で閉じる", isOn: $model.autoCloseWhenDone)
+                        .toggleStyle(DSCheckboxStyle())
+                }, hint: {
+                    Text("エラーや中止のときは閉じません。閉じるとアプリも終了します")
+                })
             }
         }
         .disabled(model.busy)
