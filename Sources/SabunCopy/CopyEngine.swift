@@ -9,41 +9,38 @@ enum OperationMode: String, CaseIterable, Identifiable, Sendable {
     var label: String { self == .copy ? "コピー" : "移動" }
 }
 
+/// 同名ファイルを比べる基準。none（空欄）のときは比べず、「処理」で扱いを決める。
 enum CompareMode: String, CaseIterable, Identifiable, Sendable {
-    case timeOnly, sizeAndTime, sizeOnly, hash
+    case none, time, size
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .timeOnly: return "更新日時"
-        case .sizeAndTime: return "サイズ＋更新日時"
-        case .sizeOnly: return "サイズ"
-        case .hash: return "内容（SHA-256）"
+        case .none: return "—"
+        case .time: return "更新日時"
+        case .size: return "サイズ"
         }
     }
 
-    var detail: String {
-        switch self {
-        case .timeOnly: return "更新日時が同じなら同一とみなします（速い）"
-        case .sizeAndTime: return "サイズと更新日時が両方同じなら同一とみなします（rsyncと同じ標準的な判定・速い）"
-        case .sizeOnly: return "サイズが同じなら同一とみなします（日時が違ってもスキップ）"
-        case .hash: return "ハッシュ値で内容まで比較します（確実ですが、大きなファイルは時間がかかります）"
-        }
-    }
+    /// 残すほうの名前（高いほう／低いほう）
+    var highLabel: String { self == .size ? "大きい" : "新しい" }
+    var lowLabel: String { self == .size ? "小さい" : "古い" }
 }
 
 enum ConflictAction: Sendable {
-    case overwrite          // 常に上書き
-    case overwriteIfNewer   // コピー元が新しいときだけ上書き
+    case overwrite          // 上書き
+    case overwriteIfNewer   // 確認ダイアログ用：コピー元が新しいときだけ上書き
     case skip               // スキップ
     case keepBoth           // 両方残す（コピー元を別名で保存）
 }
 
 struct CopyOptions: Sendable {
     var operation: OperationMode = .copy
-    var compare: CompareMode = .sizeAndTime
-    var skipIdentical = true
+    var compare: CompareMode = .none
+    /// true = 新しい／大きいほうを残す、false = 古い／小さいほうを残す
+    var preferHigh = true
     var verify = false
+    /// compare が none のときの処理。nil = 毎回確認
     var initialPolicy: ConflictAction?
 }
 
@@ -55,18 +52,11 @@ struct FileSnapshot: Sendable {
     let modified: Date
 }
 
-struct Comparison: Sendable {
-    let identical: Bool
-    let srcNewer: Bool
-    let dstNewer: Bool
-}
-
 struct ConflictInfo: Sendable {
     let source: FileSnapshot
     let destination: FileSnapshot
     let relativePath: String
     let identical: Bool
-    let compareLabel: String
 }
 
 struct ConflictDecision: Sendable {
@@ -113,19 +103,21 @@ struct PlanItem: Sendable {
     let size: Int64
 }
 
-enum PreviewStatus: Sendable {
-    case new            // コピー先に無い
-    case identical      // 比較基準では同一
-    case srcNewer       // コピー元のほうが新しい
-    case dstNewer       // コピー先のほうが新しい
-    case differ         // 日時は同じだが内容（サイズ/ハッシュ）が違う
+/// 実行したらどうなるか（差分プレビュー用）
+enum PreviewOutcome: Sendable {
+    case new        // コピー先に無い → そのまま
+    case overwrite  // 上書き
+    case same       // 比較基準で同一 → スキップ
+    case skip       // スキップ（コピー先を残す／処理がスキップ）
+    case ask        // 実行時に確認
+    case keepBoth   // 別名で両方残す
     case error
 }
 
 struct PreviewRow: Identifiable, Sendable {
     let id = UUID()
     let path: String
-    let status: PreviewStatus
+    let outcome: PreviewOutcome
     let size: Int64
 }
 
@@ -176,18 +168,17 @@ final class CopyEngine: @unchecked Sendable {
                 items.append(PlanItem(source: src, destination: base, relativePath: name,
                                       isDirectory: true, isSymlink: false, size: 0))
 
-                guard let en = fm.enumerator(at: src,
-                                             includingPropertiesForKeys: Array(keys),
-                                             options: [],
-                                             errorHandler: { _, _ in true }) else { continue }
-                for case let url as URL in en {
+                // 相対パスはそのまま受け取る（/var と /private/var のようにパスの前半が食い違っても壊れない）
+                guard let en = fm.enumerator(atPath: src.path) else { continue }
+                for case let rel as String in en {
+                    let url = src.appendingPathComponent(rel)
                     let v = try? url.resourceValues(forKeys: keys)
                     let link = v?.isSymbolicLink ?? false
                     let dir = (v?.isDirectory ?? false) && !link
-                    let rel = String(url.path.dropFirst(src.path.count)) // "/sub/file"
+                    if link { en.skipDescendants() }
                     items.append(PlanItem(source: url,
-                                          destination: URL(fileURLWithPath: base.path + rel),
-                                          relativePath: name + rel,
+                                          destination: base.appendingPathComponent(rel),
+                                          relativePath: name + "/" + rel,
                                           isDirectory: dir,
                                           isSymlink: link,
                                           size: Int64(v?.fileSize ?? 0)))
@@ -201,11 +192,45 @@ final class CopyEngine: @unchecked Sendable {
         return items
     }
 
+    // MARK: Decide（実行と差分プレビューで同じ判断を使う）
+
+    /// 同名ファイルがあるときの判断
+    private func plannedOutcome(_ s: FileSnapshot, _ d: FileSnapshot,
+                                isSymlink: Bool, options: CopyOptions) -> PreviewOutcome {
+        if options.compare != .none {
+            if isSymlink {
+                let a = try? fm.destinationOfSymbolicLink(atPath: s.url.path)
+                let b = try? fm.destinationOfSymbolicLink(atPath: d.url.path)
+                return (a != nil && a == b) ? .same : .overwrite
+            }
+            let rank: Int
+            switch options.compare {
+            case .time:
+                let dt = s.modified.timeIntervalSince(d.modified)
+                rank = abs(dt) < 2 ? 0 : (dt > 0 ? 1 : -1)
+            case .size:
+                rank = s.size == d.size ? 0 : (s.size > d.size ? 1 : -1)
+            case .none:
+                rank = 0
+            }
+            if rank == 0 { return .same }
+            let sourceWins = options.preferHigh ? rank > 0 : rank < 0
+            return sourceWins ? .overwrite : .skip
+        }
+
+        switch options.initialPolicy {
+        case .some(.overwrite): return .overwrite
+        case .some(.skip): return .skip
+        case .some(.keepBoth): return .keepBoth
+        default: return .ask
+        }
+    }
+
     // MARK: Analyze (差分プレビュー)
 
     func analyze(sources: [URL],
                  destination: URL,
-                 compare mode: CompareMode,
+                 options: CopyOptions,
                  progress: (Int, Int) -> Void) throws -> [PreviewRow] {
         let plan = try buildPlan(sources: sources, destination: destination)
         let files = plan.filter { !$0.isDirectory }
@@ -218,22 +243,16 @@ final class CopyEngine: @unchecked Sendable {
 
             let dst = item.destination
             if !exists(dst) {
-                rows.append(PreviewRow(path: item.relativePath, status: .new, size: item.size))
+                rows.append(PreviewRow(path: item.relativePath, outcome: .new, size: item.size))
                 continue
             }
             if isDirectory(dst) {
-                rows.append(PreviewRow(path: item.relativePath, status: .error, size: item.size))
+                rows.append(PreviewRow(path: item.relativePath, outcome: .error, size: item.size))
                 continue
             }
-            let s = snapshot(of: item.source)
-            let d = snapshot(of: dst)
-            let c = compare(s, d, mode: mode, isSymlink: item.isSymlink)
-            let status: PreviewStatus
-            if c.identical { status = .identical }
-            else if c.srcNewer { status = .srcNewer }
-            else if c.dstNewer { status = .dstNewer }
-            else { status = .differ }
-            rows.append(PreviewRow(path: item.relativePath, status: status, size: item.size))
+            let outcome = plannedOutcome(snapshot(of: item.source), snapshot(of: dst),
+                                         isSymlink: item.isSymlink, options: options)
+            rows.append(PreviewRow(path: item.relativePath, outcome: outcome, size: item.size))
         }
         progress(files.count, files.count)
         return rows
@@ -263,9 +282,9 @@ final class CopyEngine: @unchecked Sendable {
         p.filesTotal = plan.filter { !$0.isDirectory }.count
         p.bytesTotal = plan.reduce(0) { $0 + $1.size }
         progress(p)
-        log(.info, "\(options.operation.label)：\(p.filesTotal) ファイル（\(formatBytes(p.bytesTotal))）／比較基準：\(options.compare.label)")
+        log(.info, "\(options.operation.label)：\(p.filesTotal) ファイル（\(formatBytes(p.bytesTotal))）")
 
-        var sticky: ConflictAction? = options.initialPolicy
+        var sticky: ConflictAction? = nil
 
         for item in plan {
             if Task.isCancelled { summary.cancelled = true; break }
@@ -349,47 +368,56 @@ final class CopyEngine: @unchecked Sendable {
 
         let srcSnap = snapshot(of: item.source)
         let dstSnap = snapshot(of: dst)
-        let cmp = compare(srcSnap, dstSnap, mode: options.compare, isSymlink: item.isSymlink)
+        let planned = plannedOutcome(srcSnap, dstSnap, isSymlink: item.isSymlink, options: options)
 
-        // 比較基準で同一なら自動スキップ
-        if cmp.identical && options.skipIdentical {
+        // 比較基準で同一 → スキップ
+        if planned == .same {
             if isMove {
-                var safeToRemove = options.compare == .hash || item.isSymlink
+                // 比較基準が弱いので、内容が本当に同じか確かめてから移動元を片付ける
+                var safeToRemove = item.isSymlink
                 if !safeToRemove { safeToRemove = try contentsEqual(srcSnap, dstSnap) }
                 if safeToRemove {
                     try trashSource(item)
                     log(.skipped, "同一のためスキップし、移動元をゴミ箱へ: \(item.relativePath)")
                     return .skippedRemoved
-                } else {
-                    log(.skipped, "スキップ（比較基準では同一でも内容が異なるため移動元を残しました）: \(item.relativePath)")
-                    return .skipped
                 }
+                log(.skipped, "スキップ（比較では同一でも内容が異なるため移動元を残しました）: \(item.relativePath)")
+                return .skipped
             }
             log(.skipped, "同一のためスキップ: \(item.relativePath)")
             return .skipped
         }
 
         let action: ConflictAction
-        if let s = sticky {
-            action = s
-        } else {
-            let info = ConflictInfo(source: srcSnap,
-                                    destination: dstSnap,
-                                    relativePath: item.relativePath,
-                                    identical: cmp.identical,
-                                    compareLabel: options.compare.label)
-            guard let decision = await ask(info) else { return .cancelled }
-            if decision.applyToAll { sticky = decision.action }
-            action = decision.action
+        switch planned {
+        case .overwrite: action = .overwrite
+        case .skip: action = .skip
+        case .keepBoth: action = .keepBoth
+        default:
+            if let s = sticky {
+                action = s
+            } else {
+                let identical = srcSnap.size == dstSnap.size
+                    && abs(srcSnap.modified.timeIntervalSince(dstSnap.modified)) < 2
+                let info = ConflictInfo(source: srcSnap,
+                                        destination: dstSnap,
+                                        relativePath: item.relativePath,
+                                        identical: identical)
+                guard let decision = await ask(info) else { return .cancelled }
+                if decision.applyToAll { sticky = decision.action }
+                action = decision.action
+            }
         }
+
+        let ruleNote = options.compare == .none ? "" : "（\(options.compare.label)が\(options.preferHigh ? options.compare.highLabel : options.compare.lowLabel)ほうを残す）"
 
         switch action {
         case .skip:
-            log(.skipped, "スキップ\(isMove ? "（移動元は残します）" : ""): \(item.relativePath)")
+            log(.skipped, "スキップ\(options.compare == .none ? "" : "（コピー先を残す）")\(isMove ? "（移動元は残します）" : ""): \(item.relativePath)")
             return .skipped
 
         case .overwriteIfNewer:
-            if cmp.srcNewer {
+            if srcSnap.modified > dstSnap.modified.addingTimeInterval(2) {
                 try copyReplacing(item)
                 try verifyIfNeeded(item, copy: dst, enabled: verifyNow)
                 log(.overwritten, "上書き（コピー元が新しい）: \(item.relativePath)")
@@ -403,7 +431,7 @@ final class CopyEngine: @unchecked Sendable {
         case .overwrite:
             try copyReplacing(item)
             try verifyIfNeeded(item, copy: dst, enabled: verifyNow)
-            log(.overwritten, "上書き: \(item.relativePath)")
+            log(.overwritten, "上書き\(ruleNote): \(item.relativePath)")
             try finishMove(item, options: options)
             return .overwritten
 
@@ -416,39 +444,6 @@ final class CopyEngine: @unchecked Sendable {
             try finishMove(item, options: options)
             return .renamed
         }
-    }
-
-    // MARK: Compare
-
-    private func compare(_ s: FileSnapshot, _ d: FileSnapshot, mode: CompareMode, isSymlink: Bool) -> Comparison {
-        let dt = s.modified.timeIntervalSince(d.modified)
-        let sameTime = abs(dt) < 2
-        let sameSize = s.size == d.size
-
-        let identical: Bool
-        if isSymlink {
-            let a = try? fm.destinationOfSymbolicLink(atPath: s.url.path)
-            let b = try? fm.destinationOfSymbolicLink(atPath: d.url.path)
-            identical = (a != nil) && (a == b)
-        } else {
-            switch mode {
-            case .timeOnly:
-                identical = sameTime
-            case .sizeAndTime:
-                identical = sameSize && sameTime
-            case .sizeOnly:
-                identical = sameSize
-            case .hash:
-                if !sameSize {
-                    identical = false
-                } else if let a = try? sha256(of: s.url), let b = try? sha256(of: d.url) {
-                    identical = (a == b)
-                } else {
-                    identical = false
-                }
-            }
-        }
-        return Comparison(identical: identical, srcNewer: dt > 2, dstNewer: dt < -2)
     }
 
     private func contentsEqual(_ s: FileSnapshot, _ d: FileSnapshot) throws -> Bool {

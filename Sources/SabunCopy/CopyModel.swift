@@ -4,6 +4,8 @@ import AppKit
 
 private enum DefaultsKey {
     static let autoClose = "autoCloseWhenDone"
+    static let verify = "verifyAfterCopy"
+    static let alwaysOnTop = "alwaysOnTop"
     static let recents = "recentDestinations"
     static let favorites = "favoriteDestinations"
 }
@@ -24,41 +26,37 @@ struct ConflictRequest: Identifiable {
     let info: ConflictInfo
 }
 
-/// 差分プレビューの結果（実行時の設定のスナップショット付き）
+/// 差分プレビューの結果
 struct PreviewResult: Identifiable {
     let id = UUID()
     let rows: [PreviewRow]
     let operation: OperationMode
-    let compare: CompareMode
-    let skipIdentical: Bool
-    let policyLabel: String
 
-    func count(_ status: PreviewStatus) -> Int {
-        rows.filter { $0.status == status }.count
+    func count(_ outcome: PreviewOutcome) -> Int {
+        rows.filter { $0.outcome == outcome }.count
     }
 }
 
-/// 競合時の動作（モード）。ask = 毎回確認
+/// 比較が空欄のときの処理（同名ファイルの扱い）
 enum PolicyChoice: String, CaseIterable, Identifiable {
-    case ask, newer, skip, overwrite, keepBoth
+    case ask, overwrite, skip, keepBoth
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .ask: return "毎回確認"
-        case .newer: return "新しいほうだけ上書き"
-        case .skip: return "常にスキップ"
-        case .overwrite: return "常に上書き"
-        case .keepBoth: return "常に両方残す"
+        case .ask: return "確認"
+        case .overwrite: return "上書き"
+        case .skip: return "スキップ"
+        case .keepBoth: return "両方残す"
         }
     }
 
+    /// nil = 毎回確認
     var action: ConflictAction? {
         switch self {
         case .ask: return nil
-        case .newer: return .overwriteIfNewer
-        case .skip: return .skip
         case .overwrite: return .overwrite
+        case .skip: return .skip
         case .keepBoth: return .keepBoth
         }
     }
@@ -72,16 +70,28 @@ final class CopyModel: ObservableObject {
     @Published var sources: [URL] = []
     @Published var destination: URL?
 
+    // 動作・比較・処理
     @Published var operation: OperationMode = .copy
-    @Published var compare: CompareMode = .sizeAndTime
-    @Published var skipIdentical = true
-    @Published var verify = false
+    @Published var compare: CompareMode = .none
+    /// true = 新しい／大きいほうを残す、false = 古い／小さいほうを残す
+    @Published var preferHigh = true
     @Published var policy: PolicyChoice = .ask
 
-    /// すべての処理が終わったらウインドウを自動で閉じる（次回起動時も保持）
+    // 歯車のポップアップ（次回起動時も保持）
+    @Published var verify: Bool {
+        didSet { UserDefaults.standard.set(verify, forKey: DefaultsKey.verify) }
+    }
+    @Published var alwaysOnTop: Bool {
+        didSet {
+            UserDefaults.standard.set(alwaysOnTop, forKey: DefaultsKey.alwaysOnTop)
+            applyWindowLevel()
+        }
+    }
     @Published var autoCloseWhenDone: Bool {
         didSet { UserDefaults.standard.set(autoCloseWhenDone, forKey: DefaultsKey.autoClose) }
     }
+    @Published var showOptions = false
+
     /// コピー先の履歴とお気に入り（次回起動時も保持）
     @Published private(set) var recentFolders: [URL]
     @Published private(set) var favoriteFolders: [URL]
@@ -108,9 +118,29 @@ final class CopyModel: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
+        verify = d.bool(forKey: DefaultsKey.verify)
+        alwaysOnTop = d.bool(forKey: DefaultsKey.alwaysOnTop)
         autoCloseWhenDone = d.bool(forKey: DefaultsKey.autoClose)
         recentFolders = (d.stringArray(forKey: DefaultsKey.recents) ?? []).map { URL(fileURLWithPath: $0) }
         favoriteFolders = (d.stringArray(forKey: DefaultsKey.favorites) ?? []).map { URL(fileURLWithPath: $0) }
+    }
+
+    private var options: CopyOptions {
+        CopyOptions(operation: operation,
+                    compare: compare,
+                    preferHigh: preferHigh,
+                    verify: verify,
+                    initialPolicy: policy.action)
+    }
+
+    // MARK: Window
+
+    /// 「最前面に固定」をウインドウに反映する
+    func applyWindowLevel() {
+        let level: NSWindow.Level = alwaysOnTop ? .floating : .normal
+        for window in NSApp.windows where window.canBecomeMain {
+            window.level = level
+        }
     }
 
     // MARK: Inputs
@@ -175,22 +205,18 @@ final class CopyModel: ObservableObject {
         summaryText = nil
 
         let srcs = sources
-        let mode = compare
-        let op = operation
-        let skip = skipIdentical
-        let policyLabel = policy.label
+        let opts = options
 
         analyzeTask = Task.detached { [weak self] in
             let engine = CopyEngine()
             do {
-                let rows = try engine.analyze(sources: srcs, destination: dest, compare: mode) { done, total in
+                let rows = try engine.analyze(sources: srcs, destination: dest, options: opts) { done, total in
                     DispatchQueue.main.async {
                         self?.analyzeDone = done
                         self?.analyzeTotal = total
                     }
                 }
-                let result = PreviewResult(rows: rows, operation: op, compare: mode,
-                                           skipIdentical: skip, policyLabel: policyLabel)
+                let result = PreviewResult(rows: rows, operation: opts.operation)
                 DispatchQueue.main.async { self?.finishAnalyze(result, error: nil) }
             } catch is CancellationError {
                 DispatchQueue.main.async { self?.finishAnalyze(nil, error: nil) }
@@ -222,23 +248,19 @@ final class CopyModel: ObservableObject {
         progress = CopyProgress()
 
         let srcs = sources
-        let options = CopyOptions(operation: operation,
-                                  compare: compare,
-                                  skipIdentical: skipIdentical,
-                                  verify: verify,
-                                  initialPolicy: policy.action)
+        let opts = options
 
         task = Task.detached { [weak self] in
             let engine = CopyEngine()
             let summary = await engine.run(
                 sources: srcs,
                 destination: dest,
-                options: options,
+                options: opts,
                 ask: { info in await self?.ask(info) },
                 progress: { p in DispatchQueue.main.async { self?.progress = p } },
                 log: { kind, text in DispatchQueue.main.async { self?.appendLog(kind, text) } }
             )
-            DispatchQueue.main.async { self?.finish(summary, operation: options.operation) }
+            DispatchQueue.main.async { self?.finish(summary, operation: opts.operation) }
         }
     }
 

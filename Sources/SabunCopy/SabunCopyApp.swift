@@ -72,6 +72,7 @@ struct SabunCopyApp: App {
         Window("差分コピー", id: "main") {
             ContentView()
         }
+        .defaultSize(width: 500, height: 470)
         .windowResizability(.contentMinSize)
     }
 }
