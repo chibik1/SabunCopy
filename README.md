@@ -17,6 +17,15 @@ Windows の FireFileCopy / TeraCopy のような使い方を目指していま�
 - すべて終わったら **ウインドウを自動で閉じる**（オプション・設定は保持）
 - Finder の右クリック（サービス）、Dock アイコンへのドロップからコピー元を追加
 
+## デザイン
+
+見た目は自作 Mac アプリ共通のデザインシステム「Mac Apps」（Figma の macOS 27 キットが出どころ）に従っています。
+トークン（色 Dark/Light・文字・余白・角丸・部品の高さ）と部品のスタイルは `Sources/SabunCopy/DesignSystem.swift` にまとめてあります。
+
+- 既定は Dark。`DS.defaultAppearance` を `nil` にするとシステムの外観に従います
+- 文字は 4.5:1、操作部品の縁は 3:1 以上のコントラスト
+- 状態の色（新規／コピー元が新しい／コピー先が新しい／内容が異なる／同一）は、必ずアイコンと言葉を添えて表示
+
 ## ビルド
 
 Xcode または Command Line Tools が必要です（macOS 13 以降）。

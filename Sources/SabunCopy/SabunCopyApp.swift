@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = services
+        // デザインシステムの既定は Dark（DS.defaultAppearance を nil にするとシステムに従う）
+        NSApp.appearance = DS.defaultAppearance
     }
 
     /// Dock アイコンへのドロップ／「このアプリで開く」で渡されたものはコピー元に追加する
