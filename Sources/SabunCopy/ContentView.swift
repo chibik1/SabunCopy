@@ -11,10 +11,6 @@ private func pickURLs(files: Bool, multiple: Bool, message: String) -> [URL] {
     return panel.runModal() == .OK ? panel.urls : []
 }
 
-private func tildePath(_ url: URL) -> String {
-    url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-}
-
 /// 競合ダイアログ内のチェック状態（@State マクロを避けるため ObservableObject で持つ）
 final class ConflictChoice: ObservableObject {
     @Published var applyToAll = false
@@ -37,75 +33,12 @@ final class PreviewFilter: ObservableObject {
     @Published var kind: Kind = .all
 }
 
-// MARK: - Status presentation（色だけで伝えない：アイコン＋言葉）
-
-private extension PreviewStatus {
-    var icon: String {
-        switch self {
-        case .new: return "plus.circle"
-        case .identical: return "equal.circle"
-        case .srcNewer: return "arrow.up.circle"
-        case .dstNewer: return "arrow.down.circle"
-        case .differ: return "exclamationmark.circle"
-        case .error: return "exclamationmark.triangle.fill"
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .new: return "新規"
-        case .identical: return "同一"
-        case .srcNewer: return "コピー元が新しい"
-        case .dstNewer: return "コピー先が新しい"
-        case .differ: return "内容が異なる"
-        case .error: return "エラー"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .new: return DS.statusNew
-        case .identical: return DS.statusSame
-        case .srcNewer: return DS.statusNewer
-        case .dstNewer: return DS.statusDanger
-        case .differ: return DS.statusDiffer
-        case .error: return DS.statusDanger
-        }
-    }
-}
-
-private extension LogKind {
-    var icon: String {
-        switch self {
-        case .copied: return "plus.circle"
-        case .overwritten: return "arrow.triangle.2.circlepath"
-        case .renamed: return "doc.on.doc"
-        case .skipped: return "forward.circle"
-        case .error: return "exclamationmark.triangle.fill"
-        case .info: return "info.circle"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .copied: return DS.statusNew
-        case .overwritten: return DS.statusNewer
-        case .renamed: return DS.accent
-        case .skipped: return DS.statusSame
-        case .error: return DS.statusDanger
-        case .info: return DS.inkMuted
-        }
-    }
-}
-
-// MARK: - Main window
-
 struct ContentView: View {
     @ObservedObject private var model = CopyModel.shared
 
     var body: some View {
-        VStack(spacing: DS.space3) {
-            HStack(alignment: .top, spacing: DS.space3) {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 sourcePane
                 destinationPane
             }
@@ -125,10 +58,8 @@ struct ContentView: View {
                 }
             logPane
         }
-        .padding(DS.space4)
+        .padding(16)
         .frame(minWidth: 780, minHeight: 760)
-        .foregroundColor(DS.ink)
-        .background(DS.window.ignoresSafeArea())
         .sheet(item: $model.pending) { req in
             ConflictSheet(info: req.info) { decision in
                 model.resolve(decision)
@@ -137,117 +68,101 @@ struct ContentView: View {
         }
     }
 
-    // MARK: Source / destination
+    // MARK: Panes
 
     private var sourcePane: some View {
-        DSPane(title: "コピー元（ファイル・フォルダ）") {
-            DSDropZone(isTargeted: model.srcTargeted, isEmpty: model.sources.isEmpty, height: 150) {
-                if model.sources.isEmpty {
-                    Text("ここにドラッグ&ドロップ\n（Finderの右クリックからも追加できます）")
-                        .font(DSFont.body)
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(DS.inkMuted)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(model.sources, id: \.self) { url in
-                                HStack(spacing: DS.space2) {
-                                    Image(systemName: isExistingDirectory(url) ? "folder" : "doc")
-                                        .foregroundColor(DS.inkMuted)
-                                    Text(url.lastPathComponent)
-                                        .font(DSFont.body)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, DS.space2)
-                                .frame(height: DS.controlHeight)
-                            }
+        GroupBox("コピー元（ファイル・フォルダ）") {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                        .foregroundColor(model.srcTargeted ? .accentColor : .secondary)
+                    if model.sources.isEmpty {
+                        Text("ここにドラッグ&ドロップ\n（Finderの右クリックからも追加できます）")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                    } else {
+                        List(model.sources, id: \.self) { url in
+                            Label(url.lastPathComponent,
+                                  systemImage: isExistingDirectory(url) ? "folder" : "doc")
                         }
-                        .padding(DS.space1)
+                        .listStyle(.plain)
+                        .padding(4)
                     }
                 }
-            }
-            .dropDestination(for: URL.self) { urls, _ in
-                model.addSources(urls)
-                return true
-            } isTargeted: { model.srcTargeted = $0 }
+                .frame(height: 150)
+                .dropDestination(for: URL.self) { urls, _ in
+                    model.addSources(urls)
+                    return true
+                } isTargeted: { model.srcTargeted = $0 }
 
-            HStack(spacing: DS.space2) {
-                Button("追加…") {
-                    model.addSources(pickURLs(files: true, multiple: true,
-                                              message: "コピーするファイル・フォルダを選択"))
+                HStack {
+                    Button("追加…") {
+                        model.addSources(pickURLs(files: true, multiple: true,
+                                                  message: "コピーするファイル・フォルダを選択"))
+                    }
+                    Button("クリア") { model.clearSources() }
+                        .disabled(model.sources.isEmpty)
                 }
-                .buttonStyle(DSButtonStyle(kind: .secondary))
-
-                Button("クリア") { model.clearSources() }
-                    .buttonStyle(DSButtonStyle(kind: .secondary))
-                    .disabled(model.sources.isEmpty)
             }
+            .padding(4)
         }
         .disabled(model.busy)
     }
 
     private var destinationPane: some View {
-        DSPane(title: "コピー先（フォルダ）") {
-            DSDropZone(isTargeted: model.dstTargeted, isEmpty: model.destination == nil, height: 150) {
-                if let dest = model.destination {
-                    VStack(spacing: DS.space1) {
-                        Image(systemName: "folder.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(DS.accent)
-                        Text(dest.lastPathComponent)
-                            .font(DSFont.headline)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Text(tildePath(dest))
-                            .font(DSFont.caption)
-                            .foregroundColor(DS.inkMuted)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
+        GroupBox("コピー先（フォルダ）") {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                        .foregroundColor(model.dstTargeted ? .accentColor : .secondary)
+                    if let dest = model.destination {
+                        VStack(spacing: 4) {
+                            Image(systemName: "folder.fill").font(.title)
+                            Text(dest.lastPathComponent).font(.headline)
+                            Text(dest.path)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                        }
+                        .padding(8)
+                    } else {
+                        Text("ここにフォルダをドラッグ&ドロップ")
+                            .foregroundColor(.secondary)
                     }
-                    .padding(DS.space2)
-                } else {
-                    Text("ここにフォルダをドラッグ&ドロップ")
-                        .font(DSFont.body)
-                        .foregroundColor(DS.inkMuted)
+                }
+                .frame(height: 150)
+                .dropDestination(for: URL.self) { urls, _ in
+                    if let dir = urls.first(where: isExistingDirectory) {
+                        model.setDestination(dir)
+                        return true
+                    }
+                    return false
+                } isTargeted: { model.dstTargeted = $0 }
+
+                HStack(spacing: 8) {
+                    Button("選択…") {
+                        if let url = pickURLs(files: false, multiple: false,
+                                              message: "コピー先のフォルダを選択").first {
+                            model.setDestination(url)
+                        }
+                    }
+                    destinationMenu
+                    if let dest = model.destination {
+                        Button {
+                            model.toggleFavorite(dest)
+                        } label: {
+                            Image(systemName: model.isFavorite(dest) ? "star.fill" : "star")
+                                .foregroundColor(model.isFavorite(dest) ? .yellow : .secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help(model.isFavorite(dest) ? "お気に入りから外す" : "お気に入りに追加")
+                    }
                 }
             }
-            .dropDestination(for: URL.self) { urls, _ in
-                if let dir = urls.first(where: isExistingDirectory) {
-                    model.setDestination(dir)
-                    return true
-                }
-                return false
-            } isTargeted: { model.dstTargeted = $0 }
-
-            HStack(spacing: DS.space2) {
-                Button("選択…") {
-                    if let url = pickURLs(files: false, multiple: false,
-                                          message: "コピー先のフォルダを選択").first {
-                        model.setDestination(url)
-                    }
-                }
-                .buttonStyle(DSButtonStyle(kind: .secondary))
-
-                destinationMenu
-
-                if let dest = model.destination {
-                    let favorite = model.isFavorite(dest)
-                    Button {
-                        model.toggleFavorite(dest)
-                    } label: {
-                        Image(systemName: favorite ? "star.fill" : "star")
-                            .font(.system(size: 13))
-                            .foregroundColor(favorite ? DS.accent : DS.inkMuted)
-                            .frame(width: DS.controlHeight, height: DS.controlHeight)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(favorite ? "お気に入りから外す" : "お気に入りに追加")
-                    .accessibilityLabel(favorite ? "お気に入りから外す" : "お気に入りに追加")
-                }
-            }
+            .padding(4)
         }
         .disabled(model.busy)
     }
@@ -255,8 +170,12 @@ struct ContentView: View {
     private var existingFavorites: [URL] { model.favoriteFolders.filter(isExistingDirectory) }
     private var existingRecents: [URL] { model.recentFolders.filter(isExistingDirectory) }
 
+    private func tildePath(_ url: URL) -> String {
+        url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
     private var destinationMenu: some View {
-        Menu {
+        Menu("最近・お気に入り") {
             Section("お気に入り") {
                 if existingFavorites.isEmpty {
                     Text("（まだありません。★で追加できます）")
@@ -290,143 +209,81 @@ struct ContentView: View {
             .disabled(model.favoriteFolders.isEmpty)
             Button("最近の履歴を消去") { model.clearRecents() }
                 .disabled(model.recentFolders.isEmpty)
-        } label: {
-            DSMenuLabel(text: "最近・お気に入り")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
         .fixedSize()
     }
 
-    // MARK: Options
-
-    private let labelWidth: CGFloat = 104
-
-    /// 項目名（左）＋ 操作部品と説明（右）の1行
-    private func settingRow<C: View, H: View>(_ title: String,
-                                              @ViewBuilder control: () -> C,
-                                              @ViewBuilder hint: () -> H) -> some View {
-        HStack(alignment: .top, spacing: DS.space3) {
-            Text(title)
-                .font(DSFont.body)
-                .frame(width: labelWidth, alignment: .leading)
-                .frame(minHeight: DS.controlHeight, alignment: .leading)
-            VStack(alignment: .leading, spacing: DS.space1) {
-                control()
-                hint()
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func groupHeader(_ title: String) -> some View {
-        HStack(spacing: DS.space2) {
-            Text(title)
-                .font(DSFont.caption.weight(.semibold))
-                .foregroundColor(DS.inkMuted)
-            Rectangle().fill(DS.divider).frame(height: 1)
-        }
-    }
-
     private var optionsPane: some View {
-        DSPane(title: "設定") {
-            VStack(alignment: .leading, spacing: DS.space2) {
-                groupHeader("動作")
-
-                settingRow("操作", control: {
-                    DSSegmented(options: OperationMode.allCases,
-                                selection: $model.operation,
-                                label: { $0.label })
-                }, hint: {
-                    if model.operation == .move {
-                        HStack(alignment: .top, spacing: DS.space1) {
-                            Image(systemName: "arrow.right.circle")
-                            Text("コピーして内容を照合したあと、移動元をゴミ箱へ入れます（スキップしたファイルは移動元に残ります）")
+        GroupBox("設定") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 16) {
+                    Picker("操作", selection: $model.operation) {
+                        ForEach(OperationMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
                         }
-                        .foregroundColor(DS.statusNewer)
-                    } else {
-                        Text("コピー元はそのまま残します")
                     }
-                })
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
 
-                settingRow("競合時の動作", control: {
-                    DSPopUp(options: PolicyChoice.allCases,
-                            selection: $model.policy,
-                            width: 220,
-                            label: { $0.label })
-                }, hint: {
-                    Text(model.policy.detail)
-                })
+                    Picker("比較基準", selection: $model.compare) {
+                        ForEach(CompareMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .frame(width: 260)
 
-                groupHeader("比較")
+                    Toggle("同一ファイルは自動スキップ", isOn: $model.skipIdentical)
+                }
+                Text(model.compare.detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
 
-                settingRow("比較基準", control: {
-                    DSPopUp(options: CompareMode.allCases,
-                            selection: $model.compare,
-                            width: 220,
-                            label: { $0.label })
-                }, hint: {
-                    Text(model.compare.detail)
-                })
+                HStack(spacing: 16) {
+                    Picker("競合時の動作", selection: $model.policy) {
+                        ForEach(PolicyChoice.allCases) { choice in
+                            Text(choice.label).tag(choice)
+                        }
+                    }
+                    .frame(width: 300)
 
-                settingRow("同一ファイル", control: {
-                    Toggle("自動でスキップする", isOn: $model.skipIdentical)
-                        .toggleStyle(DSCheckboxStyle())
-                }, hint: {
-                    Text(model.skipIdentical
-                         ? "比較基準で同一と判断したファイルは、確認せずにスキップします"
-                         : "同一でも競合として扱い、上の「競合時の動作」に従います")
-                })
-
-                groupHeader("完了時")
-
-                settingRow("照合", control: {
-                    Toggle("コピー後にSHA-256で照合する", isOn: Binding(
+                    Toggle("コピー後にSHA-256で照合", isOn: Binding(
                         get: { model.verify || model.operation == .move },
                         set: { model.verify = $0 }
                     ))
-                    .toggleStyle(DSCheckboxStyle())
                     .disabled(model.operation == .move)
-                }, hint: {
-                    Text(model.operation == .move
-                         ? "移動では、必ず照合してから移動元を消します"
-                         : "コピーした内容が元と一致するかを確かめます（時間がかかります）")
-                })
+                }
 
-                settingRow("ウインドウ", control: {
-                    Toggle("すべて終わったら自動で閉じる", isOn: $model.autoCloseWhenDone)
-                        .toggleStyle(DSCheckboxStyle())
-                }, hint: {
-                    Text("エラーや中止のときは閉じません。閉じるとアプリも終了します")
-                })
+                Toggle("すべての処理が終わったらウインドウを自動で閉じる", isOn: $model.autoCloseWhenDone)
+                Text("エラーや中止のときは閉じません。ウインドウを閉じるとアプリも終了します。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if model.operation == .move {
+                    Text("移動：コピーして内容を照合したあと、移動元をゴミ箱へ入れます（スキップしたファイルは移動元に残ります）。")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
             }
+            .padding(4)
         }
         .disabled(model.busy)
     }
 
-    // MARK: Actions / progress / log
-
     private var actionRow: some View {
-        HStack(spacing: DS.space2) {
+        HStack(spacing: 10) {
             if model.isAnalyzing {
                 ProgressView().controlSize(.small)
                 Text("差分を解析中… \(model.analyzeDone) / \(model.analyzeTotal)")
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.inkMuted)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             Spacer()
             if model.busy {
-                Button("中止") { model.cancel() }
-                    .buttonStyle(DSButtonStyle(kind: .danger))
+                Button("中止", role: .destructive) { model.cancel() }
             } else {
                 Button("差分を確認") { model.analyze() }
-                    .buttonStyle(DSButtonStyle(kind: .secondary))
                     .disabled(!model.canStart)
                 Button(model.operation == .move ? "移動開始" : "コピー開始") { model.start() }
-                    .buttonStyle(DSButtonStyle(kind: .primary, large: true))
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.canStart)
             }
@@ -434,59 +291,65 @@ struct ContentView: View {
     }
 
     private var progressPane: some View {
-        VStack(alignment: .leading, spacing: DS.space1) {
+        VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: model.progress.fraction)
-                .progressViewStyle(.linear)
-                .tint(DS.accent)
             HStack {
                 Text(model.progress.current)
-                    .font(DSFont.monoCaption)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
                 Text("\(model.progress.filesDone) / \(model.progress.filesTotal) ファイル")
-                    .font(DSFont.caption)
             }
-            .foregroundColor(DS.inkMuted)
+            .font(.caption)
+            .foregroundColor(.secondary)
             if let s = model.summaryText {
-                Text(s)
-                    .font(DSFont.callout)
+                Text(s).font(.callout)
             }
         }
     }
 
     private var logPane: some View {
-        DSWell {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(model.logs.enumerated()), id: \.element.id) { index, entry in
-                            HStack(alignment: .top, spacing: DS.space2) {
-                                Image(systemName: entry.kind.icon)
-                                    .font(DSFont.caption)
-                                    .foregroundColor(entry.kind.color)
-                                    .frame(width: 14)
-                                Text(entry.text)
-                                    .font(DSFont.monoCaption)
-                                    .lineLimit(2)
-                                    .truncationMode(.middle)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, DS.space2)
-                            .padding(.vertical, 3)
-                            .background(index % 2 == 1 ? DS.rowAlt : Color.clear)
-                            .id(entry.id)
-                        }
-                    }
+        ScrollViewReader { proxy in
+            List(model.logs) { entry in
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: icon(for: entry.kind))
+                        .foregroundColor(color(for: entry.kind))
+                    Text(entry.text)
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
                 }
-                .onChange(of: model.logs.count) { _ in
-                    if let id = model.logs.last?.id {
-                        proxy.scrollTo(id, anchor: .bottom)
-                    }
+                .id(entry.id)
+            }
+            .onChange(of: model.logs.count) { _ in
+                if let id = model.logs.last?.id {
+                    proxy.scrollTo(id, anchor: .bottom)
                 }
             }
         }
         .frame(minHeight: 160)
+    }
+
+    private func icon(for kind: LogKind) -> String {
+        switch kind {
+        case .copied: return "plus.circle"
+        case .overwritten: return "arrow.triangle.2.circlepath"
+        case .renamed: return "doc.on.doc"
+        case .skipped: return "forward.circle"
+        case .error: return "exclamationmark.triangle.fill"
+        case .info: return "info.circle"
+        }
+    }
+
+    private func color(for kind: LogKind) -> Color {
+        switch kind {
+        case .copied: return .green
+        case .overwritten: return .orange
+        case .renamed: return .blue
+        case .skipped: return .secondary
+        case .error: return .red
+        case .info: return .secondary
+        }
     }
 }
 
@@ -519,70 +382,60 @@ struct PreviewSheet: View {
     }
 
     var body: some View {
-        DSSheet(width: 720, height: 600) {
-            VStack(alignment: .leading, spacing: DS.space3) {
-                Text("差分の確認").font(DSFont.title)
-                Text("比較基準：\(result.compare.label)　／　\(result.rows.count) ファイル")
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.inkMuted)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("差分の確認").font(.headline)
+            Text("比較基準：\(result.compare.label)　／　\(result.rows.count) ファイル")
+                .font(.caption)
+                .foregroundColor(.secondary)
 
-                HStack(spacing: DS.space2) {
-                    chip(.new)
-                    chip(.srcNewer)
-                    chip(.dstNewer)
-                    chip(.differ)
-                    chip(.identical)
-                    if result.count(.error) > 0 { chip(.error) }
-                }
-
-                DSSegmented(options: PreviewFilter.Kind.allCases,
-                            selection: $filter.kind,
-                            label: { $0.label })
-
-                DSWell {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(filtered.enumerated()), id: \.element.id) { index, row in
-                                HStack(spacing: DS.space2) {
-                                    Image(systemName: row.status.icon)
-                                        .foregroundColor(row.status.color)
-                                        .frame(width: 16)
-                                    Text(row.path)
-                                        .font(DSFont.monoCaption)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    Spacer(minLength: DS.space2)
-                                    Text(row.status.label)
-                                        .font(DSFont.caption)
-                                        .foregroundColor(row.status.color)
-                                    Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
-                                        .font(DSFont.caption)
-                                        .foregroundColor(DS.inkMuted)
-                                        .frame(width: 72, alignment: .trailing)
-                                }
-                                .padding(.horizontal, DS.space2)
-                                .frame(height: DS.controlHeight)
-                                .background(index % 2 == 1 ? DS.rowAlt : Color.clear)
-                            }
-                        }
-                    }
-                }
-                .frame(minHeight: 260)
-
-                Text(summaryLine)
-                    .font(DSFont.callout)
-
-                HStack(spacing: DS.space2) {
-                    Spacer()
-                    Button("閉じる") { onClose() }
-                        .buttonStyle(DSButtonStyle(kind: .secondary))
-                        .keyboardShortcut(.cancelAction)
-                    Button(result.operation == .move ? "この内容で移動開始" : "この内容でコピー開始") { onStart() }
-                        .buttonStyle(DSButtonStyle(kind: .primary, large: true))
-                        .keyboardShortcut(.defaultAction)
+            HStack(spacing: 8) {
+                chip("新規", result.count(.new), .green)
+                chip("コピー元が新しい", result.count(.srcNewer), .orange)
+                chip("コピー先が新しい", result.count(.dstNewer), .red)
+                chip("内容が異なる", result.count(.differ), .purple)
+                chip("同一", result.count(.identical), .gray)
+                if result.count(.error) > 0 {
+                    chip("エラー", result.count(.error), .red)
                 }
             }
+
+            Picker("表示", selection: $filter.kind) {
+                ForEach(PreviewFilter.Kind.allCases) { kind in
+                    Text(kind.label).tag(kind)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            List(filtered) { row in
+                HStack(spacing: 8) {
+                    Image(systemName: icon(row.status)).foregroundColor(tint(row.status))
+                    Text(row.path)
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Text(label(row.status)).font(.caption).foregroundColor(.secondary)
+                    Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 70, alignment: .trailing)
+                }
+            }
+            .frame(minHeight: 260)
+
+            Text(summaryLine)
+                .font(.callout)
+
+            HStack {
+                Spacer()
+                Button("閉じる") { onClose() }
+                    .keyboardShortcut(.cancelAction)
+                Button(result.operation == .move ? "この内容で移動開始" : "この内容でコピー開始") { onStart() }
+                    .keyboardShortcut(.defaultAction)
+            }
         }
+        .padding(20)
+        .frame(width: 720, height: 600)
     }
 
     private var summaryLine: String {
@@ -590,10 +443,46 @@ struct PreviewSheet: View {
         return "新規 \(result.count(.new)) 件はそのまま\(result.operation.label)、同一 \(result.count(.identical)) 件は\(identicalNote)。差分あり \(changedCount) 件は「\(result.policyLabel)」で処理します。"
     }
 
-    private func chip(_ status: PreviewStatus) -> some View {
-        DSChip(icon: status.icon,
-               text: "\(status.label) \(result.count(status))",
-               color: status.color)
+    private func chip(_ title: String, _ count: Int, _ color: Color) -> some View {
+        Text("\(title) \(count)")
+            .font(.caption.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.22))
+            .clipShape(Capsule())
+    }
+
+    private func label(_ s: PreviewStatus) -> String {
+        switch s {
+        case .new: return "新規"
+        case .identical: return "同一"
+        case .srcNewer: return "コピー元が新しい"
+        case .dstNewer: return "コピー先が新しい"
+        case .differ: return "内容が異なる"
+        case .error: return "エラー"
+        }
+    }
+
+    private func icon(_ s: PreviewStatus) -> String {
+        switch s {
+        case .new: return "plus.circle"
+        case .identical: return "equal.circle"
+        case .srcNewer: return "arrow.up.circle"
+        case .dstNewer: return "arrow.down.circle"
+        case .differ: return "exclamationmark.circle"
+        case .error: return "xmark.octagon"
+        }
+    }
+
+    private func tint(_ s: PreviewStatus) -> Color {
+        switch s {
+        case .new: return .green
+        case .identical: return .secondary
+        case .srcNewer: return .orange
+        case .dstNewer: return .red
+        case .differ: return .purple
+        case .error: return .red
+        }
     }
 }
 
@@ -605,48 +494,39 @@ struct ConflictSheet: View {
     @StateObject private var choice = ConflictChoice()
 
     var body: some View {
-        DSSheet(width: 600) {
-            VStack(alignment: .leading, spacing: DS.space3) {
-                Text("同じ名前のファイルがあります").font(DSFont.title)
-                Text(info.relativePath)
-                    .font(DSFont.monoBody)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("同じ名前のファイルがあります").font(.headline)
+            Text(info.relativePath)
+                .font(.system(.body, design: .monospaced))
+                .lineLimit(2)
+                .truncationMode(.middle)
 
-                HStack(alignment: .top, spacing: DS.space3) {
-                    fileBox(title: "コピー元", snap: info.source, other: info.destination)
-                    fileBox(title: "コピー先（既存）", snap: info.destination, other: info.source)
-                }
+            HStack(alignment: .top, spacing: 12) {
+                fileBox(title: "コピー元", snap: info.source, other: info.destination)
+                fileBox(title: "コピー先（既存）", snap: info.destination, other: info.source)
+            }
 
-                if info.identical {
-                    HStack(spacing: DS.space1) {
-                        Image(systemName: "equal.circle")
-                        Text("比較基準「\(info.compareLabel)」では同一です")
-                    }
-                    .font(DSFont.caption)
-                    .foregroundColor(DS.statusSame)
-                }
+            if info.identical {
+                Text("比較基準「\(info.compareLabel)」では同一です")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
 
-                Toggle("以降の競合すべてに同じ処理を適用", isOn: $choice.applyToAll)
-                    .toggleStyle(DSCheckboxStyle())
+            Toggle("以降の競合すべてに同じ処理を適用", isOn: $choice.applyToAll)
 
-                HStack(spacing: DS.space2) {
-                    Button("中止") { onDecide(nil) }
-                        .buttonStyle(DSButtonStyle(kind: .secondary))
-                        .keyboardShortcut(.cancelAction)
-                    Spacer()
-                    Button("スキップ") { decide(.skip) }
-                        .buttonStyle(DSButtonStyle(kind: .secondary))
-                    Button("両方残す") { decide(.keepBoth) }
-                        .buttonStyle(DSButtonStyle(kind: .secondary))
-                    Button("上書き") { decide(.overwrite) }
-                        .buttonStyle(DSButtonStyle(kind: .secondary))
-                    Button("新しいほうだけ上書き") { decide(.overwriteIfNewer) }
-                        .buttonStyle(DSButtonStyle(kind: .primary, large: true))
-                        .keyboardShortcut(.defaultAction)
-                }
+            HStack {
+                Button("中止") { onDecide(nil) }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("スキップ") { decide(.skip) }
+                Button("両方残す") { decide(.keepBoth) }
+                Button("上書き") { decide(.overwrite) }
+                Button("新しいほうだけ上書き") { decide(.overwriteIfNewer) }
+                    .keyboardShortcut(.defaultAction)
             }
         }
+        .padding(20)
+        .frame(width: 600)
     }
 
     private func decide(_ action: ConflictAction) {
@@ -654,27 +534,30 @@ struct ConflictSheet: View {
     }
 
     private func fileBox(title: String, snap: FileSnapshot, other: FileSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: DS.space1) {
-            Text(title)
-                .font(DSFont.caption)
-                .foregroundColor(DS.inkMuted)
-            Text(ByteCountFormatter.string(fromByteCount: snap.size, countStyle: .file))
-                .font(DSFont.headline)
-            Text(snap.modified.formatted(date: .abbreviated, time: .standard))
-                .font(DSFont.body)
-            if let badge = badge(snap, other) {
-                DSChip(icon: badge.icon, text: badge.text, color: badge.color)
+        GroupBox {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption).foregroundColor(.secondary)
+                Text(ByteCountFormatter.string(fromByteCount: snap.size, countStyle: .file))
+                    .font(.headline)
+                Text(snap.modified.formatted(date: .abbreviated, time: .standard))
+                if let badge = badge(snap, other) {
+                    Text(badge)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(badge == "新しい" ? Color.green.opacity(0.25) : Color.gray.opacity(0.25))
+                        .clipShape(Capsule())
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(4)
         }
-        .padding(DS.space3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: DS.radiusMd).fill(DS.field))
     }
 
-    private func badge(_ snap: FileSnapshot, _ other: FileSnapshot) -> (icon: String, text: String, color: Color)? {
+    private func badge(_ snap: FileSnapshot, _ other: FileSnapshot) -> String? {
         let diff = snap.modified.timeIntervalSince(other.modified)
-        if diff > 2 { return ("arrow.up.circle", "新しい", DS.statusNewer) }
-        if diff < -2 { return ("arrow.down.circle", "古い", DS.statusSame) }
+        if diff > 2 { return "新しい" }
+        if diff < -2 { return "古い" }
         return nil
     }
 }

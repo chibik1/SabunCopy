@@ -53,16 +53,6 @@ enum PolicyChoice: String, CaseIterable, Identifiable {
         }
     }
 
-    var detail: String {
-        switch self {
-        case .ask: return "同名のファイルがあるたびに、1件ずつ確認します"
-        case .newer: return "コピー元が新しいときだけ上書きし、それ以外はスキップします"
-        case .skip: return "同名のファイルには手を付けず、すべてスキップします"
-        case .overwrite: return "同名のファイルを、確認なしにすべてコピー元で上書きします"
-        case .keepBoth: return "同名のファイルは別名（例：名前 (2)）で付けて、両方残します"
-        }
-    }
-
     var action: ConflictAction? {
         switch self {
         case .ask: return nil
