@@ -127,7 +127,8 @@ struct ContentView: View {
             logPane
         }
         .padding(12)
-        .frame(minWidth: 480, minHeight: 440)
+        .frame(minWidth: 480, maxWidth: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear { model.applyWindowLevel() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -336,17 +337,8 @@ struct ContentView: View {
 
     private var settingsBox: some View {
         HStack(alignment: .bottom, spacing: 14) {
-            column("動作") {
-                Picker("動作", selection: $model.operation) {
-                    ForEach(OperationMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+            SlideToggle(selection: $model.operation)
                 .help("コピー、または移動（照合したあと、移動元をゴミ箱へ入れます）")
-            }
 
             column("比較") {
                 HStack(spacing: 4) {
@@ -481,33 +473,49 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 3) {
             ProgressView(value: model.progress.fraction)
             HStack {
-                Text(model.progress.current)
-                    .font(.system(size: 11, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                if !model.busy, let summary = model.summaryText {
+                    Text(summary)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(summary)
+                } else {
+                    Text(model.progress.current.isEmpty ? " " : model.progress.current)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 Spacer()
                 Text("\(model.progress.filesDone) / \(model.progress.filesTotal)")
                     .font(.caption)
-            }
-            .foregroundColor(.secondary)
-            if let s = model.summaryText {
-                Text(s).font(.callout)
+                    .foregroundColor(.secondary)
             }
         }
     }
 
     private var logPane: some View {
         ScrollViewReader { proxy in
-            List(model.logs) { entry in
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: entry.kind.icon)
-                        .foregroundColor(entry.kind.color)
-                    Text(entry.text)
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(2)
-                        .truncationMode(.middle)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(model.logs) { entry in
+                        HStack(alignment: .top, spacing: 5) {
+                            Image(systemName: entry.kind.icon)
+                                .font(.system(size: 10))
+                                .foregroundColor(entry.kind.color)
+                                .frame(width: 12)
+                            Text(entry.text)
+                                .font(.system(size: 11, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 0)
+                        }
+                        .id(entry.id)
+                    }
                 }
-                .id(entry.id)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
             }
             .onChange(of: model.logs.count) { _ in
                 if let id = model.logs.last?.id {
@@ -515,7 +523,45 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minHeight: 70)
+        .frame(height: 56)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.10)))
+    }
+}
+
+// MARK: - Slide toggle（コピー／移動）
+
+/// ラベルなしの大きなスライド式トグル。選んだ側へ色付きのつまみが動く。
+struct SlideToggle: View {
+    @Binding var selection: OperationMode
+
+    private let segment: CGFloat = 76
+    private let height: CGFloat = 32
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Capsule().fill(Color.secondary.opacity(0.22))
+            Capsule()
+                .fill(Color.accentColor)
+                .frame(width: segment, height: height - 6)
+                .offset(x: selection == .copy ? 3 : segment + 3)
+                .animation(.easeInOut(duration: 0.18), value: selection)
+            HStack(spacing: 0) {
+                ForEach(OperationMode.allCases) { mode in
+                    Button {
+                        selection = mode
+                    } label: {
+                        Text(mode.label)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(selection == mode ? .white : .primary)
+                            .frame(width: segment, height: height)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
+                }
+            }
+        }
+        .frame(width: segment * 2 + 6, height: height)
     }
 }
 
