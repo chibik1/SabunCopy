@@ -113,6 +113,12 @@ struct ContentView: View {
         .fixedSize(horizontal: false, vertical: true)
         .foregroundColor(V.text)
         .background(VWindowStyler())
+        // 歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
+        .overlay(alignment: .topTrailing) {
+            GearButton()
+                .padding(.trailing, 4)
+                .ignoresSafeArea(.container, edges: .top)
+        }
         .onAppear { model.applyWindowLevel() }
         .sheet(item: $model.pending) { req in
             ConflictSheet(info: req.info) { decision in
@@ -481,7 +487,7 @@ struct ContentView: View {
 
 // MARK: - Gear（タイトルバー右端）
 
-/// 歯車のボタン。タイトルバーの右端に置く（VWindowStyler が組み込む）。
+/// 歯車のボタン。タイトルバーの右端に重ねる（ContentView の overlay）。
 struct GearButton: View {
     @ObservedObject private var model = CopyModel.shared
 

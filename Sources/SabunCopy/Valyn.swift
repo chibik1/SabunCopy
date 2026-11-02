@@ -492,18 +492,26 @@ struct VWindowStyler: NSViewRepresentable {
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)
             window.standardWindowButton(.zoomButton)?.isEnabled = false
-            installGear(in: window)
+            // 画面をタイトルバーの下まで広げる（歯車をタイトルバーの高さに重ねるため）
+            window.styleMask.insert(.fullSizeContentView)
+            paintTitlebar(window)
         }
 
-        /// 歯車をタイトルバーの右端に 1 度だけ置く
-        private func installGear(in window: NSWindow) {
-            guard window.titlebarAccessoryViewControllers.isEmpty else { return }
-            let accessory = NSTitlebarAccessoryViewController()
-            let host = NSHostingView(rootView: GearButton())
-            host.frame = NSRect(x: 0, y: 0, width: 44, height: 28)
-            accessory.view = host
-            accessory.layoutAttribute = .trailing
-            window.addTitlebarAccessoryViewController(accessory)
+        /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
+        /// titlebarAppearsTransparent だけでは消えないので、塗っている内部のビューの色を直接変える。
+        /// AppKit の内部構造に頼っているため、見つからなければ何もしない。
+        private func paintTitlebar(_ window: NSWindow) {
+            func name(_ view: NSView) -> String { String(describing: type(of: view)) }
+            guard let frame = window.contentView?.superview else { return }
+            let ground = NSColor(srgbRed: 8.0 / 255, green: 12.0 / 255, blue: 6.0 / 255, alpha: 1)
+            for container in frame.subviews where name(container) == "NSTitlebarContainerView" {
+                for bar in container.subviews where name(bar) == "NSTitlebarView" {
+                    for fill in bar.subviews where name(fill) == "NSView" {
+                        fill.wantsLayer = true
+                        fill.layer?.backgroundColor = ground.cgColor
+                    }
+                }
+            }
         }
     }
 }
