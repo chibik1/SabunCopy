@@ -109,7 +109,7 @@ struct ContentView: View {
         .padding(.horizontal, V.s3)
         .padding(.top, V.s2)
         .padding(.bottom, V.s3)
-        .frame(minWidth: 480, maxWidth: .infinity)
+        .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
         .foregroundColor(V.text)
         .background(V.ground.ignoresSafeArea())
@@ -349,15 +349,19 @@ struct ContentView: View {
                 HStack(spacing: V.s1) {
                     VSelect(options: CompareMode.allCases,
                             selection: $model.compare,
-                            label: { $0.label })
+                            label: { $0.label },
+                            width: 86)
                         .help("同名ファイルを比べる基準。空欄（—）なら比べず、右の「処理」で扱いを決めます。同じ値のときはスキップします")
 
-                    if model.compare != .none {
-                        VSelect(options: [true, false],
-                                selection: $model.preferHigh,
-                                label: { $0 ? model.compare.highLabel : model.compare.lowLabel })
-                            .help("どちらを残すか")
-                    }
+                    // 空欄のときも場所は空けておく（「処理」の位置を動かさない）
+                    VSelect(options: [true, false],
+                            selection: $model.preferHigh,
+                            label: { $0 ? model.compare.highLabel : model.compare.lowLabel },
+                            width: 72)
+                        .opacity(model.compare == .none ? 0 : 1)
+                        .allowsHitTesting(model.compare != .none)
+                        .accessibilityHidden(model.compare == .none)
+                        .help("どちらを残すか")
                 }
             }
 
@@ -365,12 +369,14 @@ struct ContentView: View {
                 if model.compare == .none {
                     VSelect(options: PolicyChoice.allCases,
                             selection: $model.policy,
-                            label: { $0.label })
+                            label: { $0.label },
+                            width: 86)
                         .help("同名ファイルがあったときの扱い")
                 } else {
                     VSelect(options: [true],
                             selection: .constant(true),
-                            label: { _ in "残す" })
+                            label: { _ in "残す" },
+                            width: 86)
                         .disabled(true)
                         .help("比較で選んだほうを残します")
                 }

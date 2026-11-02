@@ -130,6 +130,8 @@ struct VSelect<T: Hashable>: View {
     let options: [T]
     @Binding var selection: T
     let label: (T) -> String
+    /// 指定すると幅を固定する（選択肢のうち最も長いものが収まる幅にする）
+    var width: CGFloat? = nil
 
     @Environment(\.isEnabled) private var isEnabled
 
@@ -150,13 +152,15 @@ struct VSelect<T: Hashable>: View {
             HStack(spacing: 6) {
                 Text(label(selection))
                     .font(VFont.ui(13, .medium))
+                    .lineLimit(1)
+                if width != nil { Spacer(minLength: 0) }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .bold))
             }
             .foregroundColor(isEnabled ? V.text : V.muted)
             .padding(.leading, 10)
             .padding(.trailing, 8)
-            .frame(height: 30)
+            .frame(width: width, height: 30)
             .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
         }
         .menuStyle(.borderlessButton)
@@ -171,7 +175,7 @@ struct VSelect<T: Hashable>: View {
 struct VSlideToggle: View {
     @Binding var selection: OperationMode
 
-    private let width: CGFloat = 180
+    private let width: CGFloat = 156
     private let height: CGFloat = 44
     private let inset: CGFloat = 4
 
@@ -354,8 +358,13 @@ struct VWindowStyler: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window = window else { return }
+            // ダーク外観にして、タイトルとツールバーの文字・アイコンを白にする
+            window.appearance = NSAppearance(named: .darkAqua)
             window.titlebarAppearsTransparent = true
             window.backgroundColor = NSColor(srgbRed: 8.0 / 255, green: 12.0 / 255, blue: 6.0 / 255, alpha: 1)
+            // 大きさは固定（最小サイズのまま）
+            window.styleMask.remove(.resizable)
+            window.standardWindowButton(.zoomButton)?.isEnabled = false
         }
     }
 }
