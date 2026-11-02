@@ -162,26 +162,112 @@ struct VSelect<T: Hashable>: View {
         .frame(width: fixedWidth, height: 30)
         .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
         .overlay(
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button {
+            VMenuTrigger(entries: {
+                options.map { option in
+                    VMenuEntry.item(label(option), checked: option == selection) {
                         selection = option
-                    } label: {
-                        if option == selection {
-                            Label(label(option), systemImage: "checkmark")
-                        } else {
-                            Text(label(option))
-                        }
                     }
                 }
-            } label: {
-                Color.clear
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .opacity(0.011)
+            })
         )
         .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label(selection))
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: - Menu（NSMenu を直接開く）
+
+/// メニューの 1 項目（階層・見出し・区切りも表せる）
+struct VMenuEntry {
+    enum Kind { case item, header, separator, submenu }
+
+    var kind: Kind
+    var title = ""
+    var symbol: String?
+    var checked = false
+    var enabled = true
+    var action: (() -> Void)?
+    var children: [VMenuEntry] = []
+
+    static func item(_ title: String, symbol: String? = nil, checked: Bool = false,
+                     enabled: Bool = true, action: @escaping () -> Void) -> VMenuEntry {
+        VMenuEntry(kind: .item, title: title, symbol: symbol, checked: checked, enabled: enabled, action: action)
+    }
+    static func header(_ title: String) -> VMenuEntry { VMenuEntry(kind: .header, title: title, enabled: false) }
+    static var separator: VMenuEntry { VMenuEntry(kind: .separator) }
+    static func submenu(_ title: String, enabled: Bool = true, _ children: [VMenuEntry]) -> VMenuEntry {
+        VMenuEntry(kind: .submenu, title: title, enabled: enabled, children: children)
+    }
+}
+
+/// 押された項目の処理を持たせる入れ物（NSMenuItem が保持する）
+private final class VMenuAction: NSObject {
+    let run: () -> Void
+    init(_ run: @escaping () -> Void) { self.run = run }
+    @objc func fire() { run() }
+}
+
+/// クリックされたら、真下に NSMenu を開く透明なビュー。
+/// SwiftUI の Menu は見た目を自由に描けず、重ねるとクリックも通らないため、これを使う。
+struct VMenuTrigger: NSViewRepresentable {
+    let entries: () -> [VMenuEntry]
+
+    func makeNSView(context: Context) -> TriggerView {
+        let view = TriggerView()
+        view.entries = entries
+        return view
+    }
+
+    func updateNSView(_ view: TriggerView, context: Context) {
+        view.entries = entries
+        view.isActive = context.environment.isEnabled
+    }
+
+    final class TriggerView: NSView {
+        var entries: (() -> [VMenuEntry])?
+        var isActive = true
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            guard isActive, let entries = entries else { return }
+            let menu = Self.makeMenu(entries())
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: isFlipped ? bounds.height : 0), in: self)
+        }
+
+        static func makeMenu(_ entries: [VMenuEntry]) -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            for entry in entries {
+                switch entry.kind {
+                case .separator:
+                    menu.addItem(.separator())
+                case .header:
+                    let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
+                    item.isEnabled = false
+                    menu.addItem(item)
+                case .submenu:
+                    let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
+                    item.isEnabled = entry.enabled
+                    item.submenu = makeMenu(entry.children)
+                    menu.addItem(item)
+                case .item:
+                    let item = NSMenuItem(title: entry.title, action: #selector(VMenuAction.fire), keyEquivalent: "")
+                    let target = VMenuAction(entry.action ?? {})
+                    item.target = target
+                    item.representedObject = target      // ここで保持する
+                    item.isEnabled = entry.enabled
+                    item.state = entry.checked ? .on : .off
+                    if let symbol = entry.symbol {
+                        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+                    }
+                    menu.addItem(item)
+                }
+            }
+            return menu
+        }
     }
 }
 
@@ -371,12 +457,32 @@ struct VWindowStyler: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 
     final class StylerView: NSView {
+        private var observers: [NSObjectProtocol] = []
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window = window else { return }
+            apply(to: window)
+            // SwiftUI がツールバーを組み直すと設定が戻ることがあるので、前面になるたびに当て直す
+            observers.forEach { NotificationCenter.default.removeObserver($0) }
+            observers = [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    guard let window = self?.window else { return }
+                    self?.apply(to: window)
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                if let window = self?.window { self?.apply(to: window) }
+            }
+        }
+
+        deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
+
+        private func apply(to window: NSWindow) {
             // ダーク外観にして、タイトルとツールバーの文字・アイコンを白にする
             window.appearance = NSAppearance(named: .darkAqua)
             window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
             window.backgroundColor = NSColor(srgbRed: 8.0 / 255, green: 12.0 / 255, blue: 6.0 / 255, alpha: 1)
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)

@@ -113,6 +113,8 @@ struct ContentView: View {
         .fixedSize(horizontal: false, vertical: true)
         .foregroundColor(V.text)
         .background(VWindowStyler())
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .toolbarColorScheme(.dark, for: .windowToolbar)
         .onAppear { model.applyWindowLevel() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -287,48 +289,38 @@ struct ContentView: View {
             .frame(width: 28, height: 28)
             .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
             .overlay(
-                Menu {
-                    Section("お気に入り") {
-                        if existingFavorites.isEmpty {
-                            Text("（まだありません。★で追加できます）")
-                        }
-                        ForEach(existingFavorites, id: \.self) { url in
-                            Button {
-                                model.setDestination(url)
-                            } label: {
-                                Label(tildePath(url), systemImage: "star.fill")
-                            }
-                        }
+                VMenuTrigger(entries: {
+                    var entries: [VMenuEntry] = [.header(L("お気に入り"))]
+                    if existingFavorites.isEmpty {
+                        entries.append(.item(L("（まだありません。★で追加できます）"), enabled: false, action: {}))
                     }
-                    Section("最近使ったフォルダ") {
-                        if existingRecents.isEmpty {
-                            Text("（履歴はありません）")
-                        }
-                        ForEach(existingRecents, id: \.self) { url in
-                            Button {
-                                model.setDestination(url)
-                            } label: {
-                                Label(tildePath(url), systemImage: "clock")
-                            }
-                        }
+                    for url in existingFavorites {
+                        entries.append(.item(tildePath(url), symbol: "star.fill") { model.setDestination(url) })
                     }
-                    Divider()
-                    Menu("お気に入りから外す") {
-                        ForEach(model.favoriteFolders, id: \.self) { url in
-                            Button(tildePath(url)) { model.removeFavorite(url) }
-                        }
+                    entries.append(.separator)
+                    entries.append(.header(L("最近使ったフォルダ")))
+                    if existingRecents.isEmpty {
+                        entries.append(.item(L("（履歴はありません）"), enabled: false, action: {}))
                     }
-                    .disabled(model.favoriteFolders.isEmpty)
-                    Button("最近の履歴を消去") { model.clearRecents() }
-                        .disabled(model.recentFolders.isEmpty)
-                } label: {
-                    Color.clear
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .opacity(0.011)
+                    for url in existingRecents {
+                        entries.append(.item(tildePath(url), symbol: "clock") { model.setDestination(url) })
+                    }
+                    entries.append(.separator)
+                    entries.append(.submenu(L("お気に入りから外す"),
+                                            enabled: !model.favoriteFolders.isEmpty,
+                                            model.favoriteFolders.map { url in
+                                                VMenuEntry.item(tildePath(url)) { model.removeFavorite(url) }
+                                            }))
+                    entries.append(.item(L("最近の履歴を消去"), enabled: !model.recentFolders.isEmpty) {
+                        model.clearRecents()
+                    })
+                    return entries
+                })
             )
             .help("最近・お気に入り")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L("最近・お気に入り"))
+            .accessibilityAddTraits(.isButton)
     }
 
     // MARK: Settings
