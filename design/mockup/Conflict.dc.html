@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>競合ダイアログ</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--surface-ground:#080c06;--surface-row:#11150f;--surface-chip:#1b211a;--brand-blue:#4079bc;--brand-blue-tint:#6a99cc;--on-brand:#ffffff;--bar-muted:#383836;--text-primary:#ffffff;--text-muted:#9ea19b;--button-light:#ffffff;--backdrop-sky:#e1ebf5;--radius-sm:8px;--radius-md:12px;--radius-lg:18px;--radius-pill:999px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--font-sans:"Helvetica Neue","Noto Sans JP",Helvetica,Arial,system-ui,sans-serif}
+body{margin:0}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.btn{height:34px;padding:0 14px;border:0;border-radius:var(--radius-sm);background:var(--surface-chip);color:var(--text-primary);font:500 13px var(--font-sans);cursor:pointer}
+</style>
+</helmet>
+<div style="width: 680px; height: 420px; box-sizing: border-box; padding: 40px; background: var(--backdrop-sky); font-family: var(--font-sans); color: var(--text-primary)">
+<div style="width: 600px; box-sizing: border-box; padding: 20px; background: var(--surface-ground); border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 14px">
+
+<div style="font-size: 15px; font-weight: 500; line-height: 20px">同じ名前のファイルがあります</div>
+<div class="mono" style="font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">素材/S02_カット割.psd</div>
+
+<div style="display: flex; gap: 12px">
+<div style="flex: 1; box-sizing: border-box; padding: 12px; background: var(--surface-row); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 11px; color: var(--text-muted)">コピー元</span>
+<span style="font-size: 20px; font-weight: 500; line-height: 26px">86.4 MB</span>
+<span style="font-size: 13px">2026年10月30日 18:42:07</span>
+<span style="align-self: flex-start; margin-top: 4px; padding: 2px 10px; border-radius: var(--radius-pill); background: var(--button-light); color: var(--surface-ground); font-size: 11px; font-weight: 700">新しい</span>
+</div>
+<div style="flex: 1; box-sizing: border-box; padding: 12px; background: var(--surface-row); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 11px; color: var(--text-muted)">コピー先（既存）</span>
+<span style="font-size: 20px; font-weight: 500; line-height: 26px">82.1 MB</span>
+<span style="font-size: 13px">2026年10月28日 11:05:33</span>
+<span style="align-self: flex-start; margin-top: 4px; padding: 2px 10px; border-radius: var(--radius-pill); background: var(--surface-chip); color: var(--text-primary); font-size: 11px; font-weight: 700">古い</span>
+</div>
+</div>
+
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px"><input type="checkbox" checked="{{no}}" onChange="{{noop}}" style="margin: 0; width: 16px; height: 16px; accent-color: var(--brand-blue)">以降の競合すべてに同じ処理を適用</label>
+
+<div style="display: flex; align-items: center; gap: 8px">
+<a href="Main.dc.html" class="btn" style="display: flex; align-items: center; text-decoration: none">中止</a>
+<span style="flex-grow: 1"></span>
+<button class="btn">スキップ</button>
+<button class="btn">両方残す</button>
+<button class="btn">上書き</button>
+<button class="btn" style="background: var(--brand-blue); color: var(--on-brand)">新しいほうだけ上書き</button>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":680,"height":420}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { no: false, noop: () => {} };
+  }
+}
+</script>
+</body>
+</html>
