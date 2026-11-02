@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ja</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>SabunCopy</string>
     <key>CFBundleIdentifier</key>
@@ -9,7 +16,7 @@
     <key>CFBundleName</key>
     <string>SabunCopy</string>
     <key>CFBundleDisplayName</key>
-    <string>差分コピー</string>
+    <string>SabunCopy</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -28,7 +35,7 @@
     <array>
         <dict>
             <key>CFBundleTypeName</key>
-            <string>ファイルとフォルダ</string>
+            <string>Files and Folders</string>
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>
             <key>LSHandlerRank</key>
@@ -48,7 +55,7 @@
             <key>NSMenuItem</key>
             <dict>
                 <key>default</key>
-                <string>差分コピー：コピー元に追加</string>
+                <string>SabunCopy: Add as Source</string>
             </dict>
             <key>NSMessage</key>
             <string>addToSources</string>
@@ -63,7 +70,7 @@
             <key>NSMenuItem</key>
             <dict>
                 <key>default</key>
-                <string>差分コピー：コピー先にする</string>
+                <string>SabunCopy: Set as Destination</string>
             </dict>
             <key>NSMessage</key>
             <string>setAsDestination</string>

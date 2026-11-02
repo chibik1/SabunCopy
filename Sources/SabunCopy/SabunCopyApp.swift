@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = services
+        // Valyn はダーク専用
+        NSApp.appearance = NSAppearance(named: .darkAqua)
     }
 
     /// Dock アイコンへのドロップ／「このアプリで開く」で渡されたものはコピー元に追加する
@@ -69,7 +71,7 @@ struct SabunCopyApp: App {
     }
 
     var body: some Scene {
-        Window("差分コピー", id: "main") {
+        Window("SabunCopy", id: "main") {
             ContentView()
         }
         .windowResizability(.contentSize)

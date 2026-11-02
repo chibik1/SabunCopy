@@ -6,7 +6,7 @@ import CryptoKit
 enum OperationMode: String, CaseIterable, Identifiable, Sendable {
     case copy, move
     var id: String { rawValue }
-    var label: String { self == .copy ? "コピー" : "移動" }
+    var label: String { self == .copy ? L("コピー") : L("移動") }
 }
 
 /// 同名ファイルを比べる基準。none（空欄）のときは比べず、「処理」で扱いを決める。
@@ -17,14 +17,14 @@ enum CompareMode: String, CaseIterable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .none: return "—"
-        case .time: return "更新日時"
-        case .size: return "サイズ"
+        case .time: return L("更新日時")
+        case .size: return L("サイズ")
         }
     }
 
     /// 残すほうの名前（高いほう／低いほう）
-    var highLabel: String { self == .size ? "大きい" : "新しい" }
-    var lowLabel: String { self == .size ? "小さい" : "古い" }
+    var highLabel: String { self == .size ? L("大きい") : L("新しい") }
+    var lowLabel: String { self == .size ? L("小さい") : L("古い") }
 }
 
 enum ConflictAction: Sendable {
@@ -145,51 +145,82 @@ final class CopyEngine: @unchecked Sendable {
 
     func buildPlan(sources: [URL], destination: URL) throws -> [PlanItem] {
         var items: [PlanItem] = []
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]
+        let destReal = realPath(destination)
 
         for src in sources {
             let name = src.lastPathComponent
             let base = destination.appendingPathComponent(name)
-            let values = try src.resourceValues(forKeys: keys)
-            let isSymlink = values.isSymbolicLink ?? false
-            let isDir = (values.isDirectory ?? false) && !isSymlink
+            let (isSymlink, isDir, size) = try kind(of: src, label: name)
 
-            if base.standardizedFileURL.path == src.standardizedFileURL.path {
-                throw CopyError(message: "「\(name)」はコピー元とコピー先が同じ場所です")
+            // コピー元と同じ場所に書こうとしていないか（シンボリックリンクを解決した実体のパスで見る）
+            let srcLocation = isSymlink
+                ? URL(fileURLWithPath: realPath(src.deletingLastPathComponent())).appendingPathComponent(name).path
+                : realPath(src)
+            if URL(fileURLWithPath: destReal).appendingPathComponent(name).path == srcLocation {
+                throw CopyError(message: L("「%@」はコピー元とコピー先が同じ場所です", name))
             }
 
             if isDir {
-                let srcPath = src.standardizedFileURL.path
-                let destPath = destination.standardizedFileURL.path
-                if destPath == srcPath || destPath.hasPrefix(srcPath + "/") {
-                    throw CopyError(message: "「\(name)」の中にはコピーできません（コピー先がコピー元の内側です）")
+                // コピー先がコピー元の内側ではないか
+                if destReal == srcLocation || destReal.hasPrefix(srcLocation + "/") {
+                    throw CopyError(message: L("「%@」の中にはコピーできません（コピー先がコピー元の内側です）", name))
                 }
 
+                try ensureReadable(src, label: name)
                 items.append(PlanItem(source: src, destination: base, relativePath: name,
                                       isDirectory: true, isSymlink: false, size: 0))
 
-                // 相対パスはそのまま受け取る（/var と /private/var のようにパスの前半が食い違っても壊れない）
-                guard let en = fm.enumerator(atPath: src.path) else { continue }
+                // 相対パスはそのまま受け取る（/var と /private/var のようにパスの前半が食い違っても壊れない）。
+                // 読めないものがあれば、一部だけの計画にはせず、ここで中止する。
+                guard let en = fm.enumerator(atPath: src.path) else {
+                    throw CopyError(message: L("フォルダの中身を読み取れません: %@", name))
+                }
                 for case let rel as String in en {
                     let url = src.appendingPathComponent(rel)
-                    let v = try? url.resourceValues(forKeys: keys)
-                    let link = v?.isSymbolicLink ?? false
-                    let dir = (v?.isDirectory ?? false) && !link
+                    let label = name + "/" + rel
+                    let (link, dir, childSize) = try kind(of: url, label: label)
                     if link { en.skipDescendants() }
+                    if dir { try ensureReadable(url, label: label) }
                     items.append(PlanItem(source: url,
                                           destination: base.appendingPathComponent(rel),
-                                          relativePath: name + "/" + rel,
+                                          relativePath: label,
                                           isDirectory: dir,
                                           isSymlink: link,
-                                          size: Int64(v?.fileSize ?? 0)))
+                                          size: childSize))
                 }
             } else {
                 items.append(PlanItem(source: src, destination: base, relativePath: name,
-                                      isDirectory: false, isSymlink: isSymlink,
-                                      size: Int64(values.fileSize ?? 0)))
+                                      isDirectory: false, isSymlink: isSymlink, size: size))
             }
         }
         return items
+    }
+
+    /// 種類（リンク／フォルダ）とサイズ。属性が読めないときは握りつぶさずエラーにする。
+    private func kind(of url: URL, label: String) throws -> (isSymlink: Bool, isDirectory: Bool, size: Int64) {
+        do {
+            let attrs = try fm.attributesOfItem(atPath: url.path)   // lstat：リンクはリンクとして見る
+            let type = attrs[.type] as? FileAttributeType
+            let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+            return (type == .typeSymbolicLink, type == .typeDirectory, size)
+        } catch {
+            throw CopyError(message: L("読み取れません: %@ — %@", label, error.localizedDescription))
+        }
+    }
+
+    private func ensureReadable(_ dir: URL, label: String) throws {
+        do {
+            _ = try fm.contentsOfDirectory(atPath: dir.path)
+        } catch {
+            throw CopyError(message: L("読み取れません: %@ — %@", label, error.localizedDescription))
+        }
+    }
+
+    /// シンボリックリンクをすべて解決した実体のパス（解決できなければ標準化したパス）
+    private func realPath(_ url: URL) -> String {
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        if realpath(url.path, &buffer) != nil { return String(cString: buffer) }
+        return url.standardizedFileURL.path
     }
 
     // MARK: Decide（実行と差分プレビューで同じ判断を使う）
@@ -282,7 +313,7 @@ final class CopyEngine: @unchecked Sendable {
         p.filesTotal = plan.filter { !$0.isDirectory }.count
         p.bytesTotal = plan.reduce(0) { $0 + $1.size }
         progress(p)
-        log(.info, "\(options.operation.label)：\(p.filesTotal) ファイル（\(formatBytes(p.bytesTotal))）")
+        log(.info, L("%@：%ld ファイル（%@）", options.operation.label, p.filesTotal, formatBytes(p.bytesTotal)))
 
         var sticky: ConflictAction? = nil
 
@@ -294,7 +325,7 @@ final class CopyEngine: @unchecked Sendable {
                     try ensureDirectory(item.destination)
                 } catch {
                     summary.failed += 1
-                    log(.error, "フォルダを作成できません: \(item.relativePath) — \(error.localizedDescription)")
+                    log(.error, L("フォルダを作成できません: %@ — %@", item.relativePath, error.localizedDescription))
                 }
                 continue
             }
@@ -330,7 +361,7 @@ final class CopyEngine: @unchecked Sendable {
             for item in plan.reversed() where item.isDirectory {
                 if removeIfEmpty(item.source) {
                     removedDirs += 1
-                    log(.info, "空になったフォルダをゴミ箱へ: \(item.relativePath)")
+                    log(.info, L("空になったフォルダをゴミ箱へ: %@", item.relativePath))
                 }
             }
         }
@@ -350,20 +381,17 @@ final class CopyEngine: @unchecked Sendable {
         let dst = item.destination
         let isMove = options.operation == .move
         let verifyNow = options.verify || isMove   // 移動は必ず照合してから元を消す
-        let verb = isMove ? "移動" : "コピー"
 
         guard exists(dst) else {
             try ensureDirectory(dst.deletingLastPathComponent())
-            try fm.copyItem(at: item.source, to: dst)
-            restoreTimestamp(item, at: dst)
-            try verifyIfNeeded(item, copy: dst, enabled: verifyNow)
-            log(.copied, "\(verb): \(item.relativePath)")
+            try copyViaTemp(item, to: dst, verify: verifyNow, replacing: false)
+            log(.copied, isMove ? L("移動: %@", item.relativePath) : L("コピー: %@", item.relativePath))
             try finishMove(item, options: options)
             return .copied
         }
 
         if isDirectory(dst) {
-            throw CopyError(message: "コピー先に同名のフォルダがあるためコピーできません")
+            throw CopyError(message: L("コピー先に同名のフォルダがあるためコピーできません"))
         }
 
         let srcSnap = snapshot(of: item.source)
@@ -378,13 +406,13 @@ final class CopyEngine: @unchecked Sendable {
                 if !safeToRemove { safeToRemove = try contentsEqual(srcSnap, dstSnap) }
                 if safeToRemove {
                     try trashSource(item)
-                    log(.skipped, "同一のためスキップし、移動元をゴミ箱へ: \(item.relativePath)")
+                    log(.skipped, L("同一のためスキップし、移動元をゴミ箱へ: %@", item.relativePath))
                     return .skippedRemoved
                 }
-                log(.skipped, "スキップ（比較では同一でも内容が異なるため移動元を残しました）: \(item.relativePath)")
+                log(.skipped, L("スキップ（比較では同一でも内容が異なるため移動元を残しました）: %@", item.relativePath))
                 return .skipped
             }
-            log(.skipped, "同一のためスキップ: \(item.relativePath)")
+            log(.skipped, L("同一のためスキップ: %@", item.relativePath))
             return .skipped
         }
 
@@ -409,38 +437,51 @@ final class CopyEngine: @unchecked Sendable {
             }
         }
 
-        let ruleNote = options.compare == .none ? "" : "（\(options.compare.label)が\(options.preferHigh ? options.compare.highLabel : options.compare.lowLabel)ほうを残す）"
+        // 比較で決まった上書きのときに添える、ルールの説明
+        let rulePhrase: String
+        switch (options.compare, options.preferHigh) {
+        case (.time, true): rulePhrase = L("更新日時が新しいほうを残す")
+        case (.time, false): rulePhrase = L("更新日時が古いほうを残す")
+        case (.size, true): rulePhrase = L("サイズが大きいほうを残す")
+        case (.size, false): rulePhrase = L("サイズが小さいほうを残す")
+        case (.none, _): rulePhrase = ""
+        }
 
         switch action {
         case .skip:
-            log(.skipped, "スキップ\(options.compare == .none ? "" : "（コピー先を残す）")\(isMove ? "（移動元は残します）" : ""): \(item.relativePath)")
+            let keptDestination = options.compare != .none
+            if keptDestination {
+                log(.skipped, isMove ? L("スキップ（コピー先を残す・移動元は残します）: %@", item.relativePath)
+                                     : L("スキップ（コピー先を残す）: %@", item.relativePath))
+            } else {
+                log(.skipped, isMove ? L("スキップ（移動元は残します）: %@", item.relativePath)
+                                     : L("スキップ: %@", item.relativePath))
+            }
             return .skipped
 
         case .overwriteIfNewer:
             if srcSnap.modified > dstSnap.modified.addingTimeInterval(2) {
-                try copyReplacing(item)
-                try verifyIfNeeded(item, copy: dst, enabled: verifyNow)
-                log(.overwritten, "上書き（コピー元が新しい）: \(item.relativePath)")
+                try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true)
+                log(.overwritten, L("上書き（コピー元が新しい）: %@", item.relativePath))
                 try finishMove(item, options: options)
                 return .overwritten
             } else {
-                log(.skipped, "スキップ（コピー先が同じか新しい）\(isMove ? "（移動元は残します）" : ""): \(item.relativePath)")
+                log(.skipped, isMove ? L("スキップ（コピー先が同じか新しい・移動元は残します）: %@", item.relativePath)
+                                 : L("スキップ（コピー先が同じか新しい）: %@", item.relativePath))
                 return .skipped
             }
 
         case .overwrite:
-            try copyReplacing(item)
-            try verifyIfNeeded(item, copy: dst, enabled: verifyNow)
-            log(.overwritten, "上書き\(ruleNote): \(item.relativePath)")
+            try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true)
+            log(.overwritten, rulePhrase.isEmpty ? L("上書き: %@", item.relativePath)
+                                              : L("上書き（%@）: %@", rulePhrase, item.relativePath))
             try finishMove(item, options: options)
             return .overwritten
 
         case .keepBoth:
             let newURL = uniqueURL(for: dst)
-            try fm.copyItem(at: item.source, to: newURL)
-            restoreTimestamp(item, at: newURL)
-            try verifyIfNeeded(item, copy: newURL, enabled: verifyNow)
-            log(.renamed, "別名で保存: \(item.relativePath) → \(newURL.lastPathComponent)")
+            try copyViaTemp(item, to: newURL, verify: verifyNow, replacing: false)
+            log(.renamed, L("別名で保存: %@ → %@", item.relativePath, newURL.lastPathComponent))
             try finishMove(item, options: options)
             return .renamed
         }
@@ -463,7 +504,7 @@ final class CopyEngine: @unchecked Sendable {
             try fm.trashItem(at: item.source, resultingItemURL: nil)
             removedFiles += 1
         } catch {
-            throw CopyError(message: "コピーは完了しましたが、移動元をゴミ箱へ移せませんでした（\(error.localizedDescription)）")
+            throw CopyError(message: L("コピーは完了しましたが、移動元をゴミ箱へ移せませんでした（%@）", error.localizedDescription))
         }
     }
 
@@ -493,7 +534,7 @@ final class CopyEngine: @unchecked Sendable {
         var isDir: ObjCBool = false
         if fm.fileExists(atPath: url.path, isDirectory: &isDir) {
             if isDir.boolValue { return }
-            throw CopyError(message: "同名のファイルがあるためフォルダを作成できません")
+            throw CopyError(message: L("同名のファイルがあるためフォルダを作成できません"))
         }
         try fm.createDirectory(at: url, withIntermediateDirectories: true)
     }
@@ -512,24 +553,34 @@ final class CopyEngine: @unchecked Sendable {
         }
     }
 
-    /// 一時ファイルにコピーしてから置き換える（途中で失敗しても既存ファイルを壊さない）
-    private func copyReplacing(_ item: PlanItem) throws {
-        let dst = item.destination
-        if item.isSymlink {
-            try fm.removeItem(at: dst)
-            try fm.copyItem(at: item.source, to: dst)
-            return
-        }
-        let tmp = dst.deletingLastPathComponent()
+    /// 同じフォルダの一時ファイルへ書き、照合まで済んでから最終の名前に切り替える。
+    /// 途中で失敗しても（強制終了しても）、最終の名前に中途半端なファイルが残らない。
+    /// 上書きのときも、新しい内容が揃うまで既存のファイルには触れない。
+    private func copyViaTemp(_ item: PlanItem, to final: URL, verify: Bool, replacing: Bool) throws {
+        let tmp = final.deletingLastPathComponent()
             .appendingPathComponent(".sabun-\(UUID().uuidString).tmp")
         do {
             try fm.copyItem(at: item.source, to: tmp)
-            _ = try fm.replaceItemAt(dst, withItemAt: tmp)
+            restoreTimestamp(item, at: tmp)
+            try verifyIfNeeded(item, copy: tmp, enabled: verify)   // 切り替える前に照合する
+            if !replacing {
+                try fm.moveItem(at: tmp, to: final)                // 同名ができていたら失敗する（上書きしない）
+            } else if item.isSymlink {
+                try atomicRename(tmp, to: final)                   // リンクは rename で一度に置き換える
+            } else {
+                _ = try fm.replaceItemAt(final, withItemAt: tmp)
+            }
         } catch {
             try? fm.removeItem(at: tmp)
             throw error
         }
-        restoreTimestamp(item, at: dst)
+        if replacing { restoreTimestamp(item, at: final) }
+    }
+
+    private func atomicRename(_ from: URL, to: URL) throws {
+        if rename(from.path, to.path) != 0 {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
     }
 
     private func uniqueURL(for url: URL) -> URL {
@@ -550,7 +601,7 @@ final class CopyEngine: @unchecked Sendable {
         let a = try sha256(of: item.source)
         let b = try sha256(of: copy)
         if a != b {
-            throw CopyError(message: "照合に失敗しました（コピー元とコピー先の内容が一致しません）")
+            throw CopyError(message: L("照合に失敗しました（コピー元とコピー先の内容が一致しません）"))
         }
     }
 
