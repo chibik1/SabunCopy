@@ -26,6 +26,8 @@ enum V {
     static let text = Color(hex: 0xffffff)       // text-primary
     static let muted = Color(hex: 0x9ea19b)      // text-muted
     static let light = Color(hex: 0xffffff)      // button-light
+    /// スライドトグルのつまみ。真っ白よりひと段やわらかい白
+    static let thumb = Color(hex: 0xe4e9f0)
     /// Valyn に定義が無いので、エラー表示だけに使う控えめな赤
     static let danger = Color(hex: 0xff6e70)
 
@@ -140,7 +142,7 @@ struct VSelect<T: Hashable>: View {
         let widest = strings
             .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
             .max() ?? 0
-        return ceil(widest) + 34   // 左10 + 右8 + 矢印10 + 間6
+        return ceil(widest) + 38   // 左10 + 右8 + 文字と矢印の間6 + 矢印10 + ゆとり4
     }
 
     @Environment(\.isEnabled) private var isEnabled
@@ -148,10 +150,12 @@ struct VSelect<T: Hashable>: View {
     var body: some View {
         // macOS の Menu は独自のラベルを崩すので、見た目は自前で描き、
         // その上に透明な Menu を重ねてクリックを受ける
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             Text(label(selection))
                 .font(VFont.ui(13, .medium))
                 .lineLimit(1)
+                .fixedSize()
+                .padding(.trailing, 6)
             Spacer(minLength: 0)
             Image(systemName: "chevron.down")
                 .font(.system(size: 10, weight: .bold))
@@ -277,7 +281,7 @@ struct VMenuTrigger: NSViewRepresentable {
 struct VSlideToggle: View {
     @Binding var selection: OperationMode
 
-    private let width: CGFloat = 156
+    private let width: CGFloat = 144
     private let height: CGFloat = 44
     private let inset: CGFloat = 4
 
@@ -288,7 +292,7 @@ struct VSlideToggle: View {
             Capsule().fill(V.blue)
 
             Capsule()
-                .fill(V.light)
+                .fill(V.thumb)
                 .overlay(
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
@@ -482,11 +486,24 @@ struct VWindowStyler: NSViewRepresentable {
             // ダーク外観にして、タイトルとツールバーの文字・アイコンを白にする
             window.appearance = NSAppearance(named: .darkAqua)
             window.titlebarAppearsTransparent = true
+            window.titleVisibility = .visible       // ツールバーが無ければ、タイトルは中央に出る
             window.titlebarSeparatorStyle = .none
             window.backgroundColor = NSColor(srgbRed: 8.0 / 255, green: 12.0 / 255, blue: 6.0 / 255, alpha: 1)
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)
             window.standardWindowButton(.zoomButton)?.isEnabled = false
+            installGear(in: window)
+        }
+
+        /// 歯車をタイトルバーの右端に 1 度だけ置く
+        private func installGear(in window: NSWindow) {
+            guard window.titlebarAccessoryViewControllers.isEmpty else { return }
+            let accessory = NSTitlebarAccessoryViewController()
+            let host = NSHostingView(rootView: GearButton())
+            host.frame = NSRect(x: 0, y: 0, width: 44, height: 28)
+            accessory.view = host
+            accessory.layoutAttribute = .trailing
+            window.addTitlebarAccessoryViewController(accessory)
         }
     }
 }

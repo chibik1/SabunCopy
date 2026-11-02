@@ -113,22 +113,7 @@ struct ContentView: View {
         .fixedSize(horizontal: false, vertical: true)
         .foregroundColor(V.text)
         .background(VWindowStyler())
-        .toolbarBackground(.hidden, for: .windowToolbar)
-        .toolbarColorScheme(.dark, for: .windowToolbar)
         .onAppear { model.applyWindowLevel() }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.showOptions.toggle()
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .help("設定")
-                .popover(isPresented: $model.showOptions, arrowEdge: .bottom) {
-                    optionsPopover
-                }
-            }
-        }
         .sheet(item: $model.pending) { req in
             ConflictSheet(info: req.info) { decision in
                 model.resolve(decision)
@@ -383,35 +368,6 @@ struct ContentView: View {
         .disabled(model.busy)
     }
 
-    // MARK: Gear popover
-
-    private var optionsPopover: some View {
-        VStack(alignment: .leading, spacing: V.s3) {
-            Toggle(isOn: Binding(
-                get: { model.verify || model.operation == .move },
-                set: { model.verify = $0 }
-            )) {
-                Label("ハッシュ照合", systemImage: "checkmark.shield")
-            }
-            .disabled(model.operation == .move)
-            .help("コピー後にSHA-256で内容が一致するかを確かめます。移動のときは常にオンです")
-
-            Toggle(isOn: $model.alwaysOnTop) {
-                Label("最前面に固定", systemImage: "pin")
-            }
-            .help("ウインドウを他のウインドウより常に前に表示します")
-
-            Toggle(isOn: $model.autoCloseWhenDone) {
-                Label("処理後に閉じる", systemImage: "rectangle.portrait.and.arrow.right")
-            }
-            .help("すべて終わったらウインドウを閉じます。エラーや中止のときは閉じません。閉じるとアプリも終了します")
-        }
-        .toggleStyle(VCheckStyle())
-        .padding(14)
-        .frame(width: 206)
-        .background(V.row)
-    }
-
     // MARK: Actions / progress / log
 
     private var actionRow: some View {
@@ -520,6 +476,61 @@ struct ContentView: View {
         }
         .frame(height: 56)
         .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.row))
+    }
+}
+
+// MARK: - Gear（タイトルバー右端）
+
+/// 歯車のボタン。タイトルバーの右端に置く（VWindowStyler が組み込む）。
+struct GearButton: View {
+    @ObservedObject private var model = CopyModel.shared
+
+    var body: some View {
+        Button {
+            model.showOptions.toggle()
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 14))
+                .foregroundColor(V.text)
+                .frame(width: 36, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("設定")
+        .popover(isPresented: $model.showOptions, arrowEdge: .bottom) {
+            OptionsPopover()
+        }
+    }
+}
+
+struct OptionsPopover: View {
+    @ObservedObject private var model = CopyModel.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V.s3) {
+            Toggle(isOn: Binding(
+                get: { model.verify || model.operation == .move },
+                set: { model.verify = $0 }
+            )) {
+                Label("ハッシュ照合", systemImage: "checkmark.shield")
+            }
+            .disabled(model.operation == .move)
+            .help("コピー後にSHA-256で内容が一致するかを確かめます。移動のときは常にオンです")
+
+            Toggle(isOn: $model.alwaysOnTop) {
+                Label("最前面に固定", systemImage: "pin")
+            }
+            .help("ウインドウを他のウインドウより常に前に表示します")
+
+            Toggle(isOn: $model.autoCloseWhenDone) {
+                Label("処理後に閉じる", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            .help("すべて終わったらウインドウを閉じます。エラーや中止のときは閉じません。閉じるとアプリも終了します")
+        }
+        .toggleStyle(VCheckStyle())
+        .padding(14)
+        .frame(width: 206)
+        .background(V.row)
     }
 }
 
