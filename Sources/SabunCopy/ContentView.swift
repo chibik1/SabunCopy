@@ -22,9 +22,8 @@ final class ConflictChoice: ObservableObject {
 
 /// 差分プレビューの表示フィルタ
 final class PreviewFilter: ObservableObject {
-    enum Kind: String, CaseIterable, Identifiable {
+    enum Kind: String, CaseIterable {
         case all, new, changed, skipped
-        var id: String { rawValue }
         var label: String {
             switch self {
             case .all: return "すべて"
@@ -45,10 +44,10 @@ private extension PreviewOutcome {
         case .new: return "plus.circle"
         case .overwrite: return "arrow.triangle.2.circlepath"
         case .same: return "equal.circle"
-        case .skip: return "forward.circle"
+        case .skip: return "chevron.right.circle"
         case .ask: return "questionmark.circle"
         case .keepBoth: return "doc.on.doc"
-        case .error: return "exclamationmark.triangle.fill"
+        case .error: return "exclamationmark.triangle"
         }
     }
 
@@ -63,18 +62,6 @@ private extension PreviewOutcome {
         case .error: return "エラー"
         }
     }
-
-    var color: Color {
-        switch self {
-        case .new: return .green
-        case .overwrite: return .orange
-        case .same: return .secondary
-        case .skip: return .secondary
-        case .ask: return .blue
-        case .keepBoth: return .blue
-        case .error: return .red
-        }
-    }
 }
 
 private extension LogKind {
@@ -83,21 +70,14 @@ private extension LogKind {
         case .copied: return "plus.circle"
         case .overwritten: return "arrow.triangle.2.circlepath"
         case .renamed: return "doc.on.doc"
-        case .skipped: return "forward.circle"
-        case .error: return "exclamationmark.triangle.fill"
+        case .skipped: return "chevron.right.circle"
+        case .error: return "exclamationmark.triangle"
         case .info: return "info.circle"
         }
     }
 
     var color: Color {
-        switch self {
-        case .copied: return .green
-        case .overwritten: return .orange
-        case .renamed: return .blue
-        case .skipped: return .secondary
-        case .error: return .red
-        case .info: return .secondary
-        }
+        self == .error ? V.danger : V.muted
     }
 }
 
@@ -107,10 +87,10 @@ struct ContentView: View {
     @ObservedObject private var model = CopyModel.shared
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: V.s2) {
             sourceRow
             destinationRow
-            settingsBox
+            settingsPanel
             actionRow
             progressPane
                 .sheet(item: $model.preview) { result in
@@ -126,9 +106,14 @@ struct ContentView: View {
                 }
             logPane
         }
-        .padding(12)
+        .padding(.horizontal, V.s3)
+        .padding(.top, V.s2)
+        .padding(.bottom, V.s3)
         .frame(minWidth: 480, maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
+        .foregroundColor(V.text)
+        .background(V.ground.ignoresSafeArea())
+        .background(VWindowStyler())
         .onAppear { model.applyWindowLevel() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -151,35 +136,42 @@ struct ContentView: View {
         }
     }
 
-    // MARK: Source / destination
+    // MARK: Source
 
     private var sourceRow: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: V.s2) {
             Image(systemName: "square.and.arrow.up")
-                .foregroundColor(.secondary)
+                .font(.system(size: 14))
+                .foregroundColor(V.muted)
                 .frame(width: 22, height: 28)
                 .help("コピー元")
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(model.srcTargeted ? Color.accentColor : Color.secondary.opacity(0.6),
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: V.rSm, style: .continuous)
+                    .strokeBorder(model.srcTargeted ? V.blue : V.barMuted,
                                   style: StrokeStyle(lineWidth: 1.5, dash: model.sources.isEmpty ? [6] : []))
                 if model.sources.isEmpty {
                     Text("コピー元をドロップ")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
+                        .font(VFont.ui(12))
+                        .foregroundColor(V.muted)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(model.sources, id: \.self) { url in
-                                Label(url.lastPathComponent,
-                                      systemImage: isExistingDirectory(url) ? "folder" : "doc")
-                                    .font(.callout)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                                HStack(spacing: 6) {
+                                    Image(systemName: isExistingDirectory(url) ? "folder" : "doc")
+                                        .font(.system(size: 12))
+                                        .frame(width: 14)
+                                    Text(url.lastPathComponent)
+                                        .font(VFont.ui(12))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer(minLength: 0)
+                                }
+                                .frame(height: 15)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(6)
                     }
                 }
@@ -190,56 +182,63 @@ struct ContentView: View {
                 return true
             } isTargeted: { model.srcTargeted = $0 }
 
-            VStack(spacing: 4) {
+            VStack(spacing: V.s1) {
                 Button {
                     model.addSources(pickURLs(files: true, multiple: true,
                                               message: "コピーするファイル・フォルダを選択"))
                 } label: {
-                    Image(systemName: "plus").frame(width: 16)
+                    Image(systemName: "plus").font(.system(size: 13))
                 }
+                .buttonStyle(VChipStyle(width: 26, height: 26))
                 .help("追加…")
 
                 Button {
                     model.clearSources()
                 } label: {
-                    Image(systemName: "trash").frame(width: 16)
+                    Image(systemName: "trash").font(.system(size: 13))
                 }
+                .buttonStyle(VChipStyle(width: 26, height: 26))
                 .help("クリア")
                 .disabled(model.sources.isEmpty)
             }
-            .controlSize(.small)
         }
         .disabled(model.busy)
     }
 
+    // MARK: Destination
+
     private var destinationRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: V.s2) {
             Image(systemName: "square.and.arrow.down")
-                .foregroundColor(.secondary)
+                .font(.system(size: 14))
+                .foregroundColor(V.muted)
                 .frame(width: 22)
                 .help("コピー先")
 
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(model.dstTargeted ? Color.accentColor : Color.secondary.opacity(0.6),
-                                  style: StrokeStyle(lineWidth: 1.5, dash: model.destination == nil ? [6] : []))
-                HStack(spacing: 6) {
-                    Image(systemName: "folder.fill").foregroundColor(.accentColor)
-                    if let dest = model.destination {
-                        Text(tildePath(dest))
-                            .font(.callout)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    } else {
-                        Text("コピー先のフォルダをドロップ")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(V.blue)
+                if let dest = model.destination {
+                    Text(tildePath(dest))
+                        .font(VFont.ui(13))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("コピー先のフォルダをドロップ")
+                        .font(VFont.ui(13))
+                        .foregroundColor(V.muted)
                 }
-                .padding(.horizontal, 8)
+                Spacer(minLength: 0)
             }
-            .frame(height: 28)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .overlay(
+                RoundedRectangle(cornerRadius: V.rSm, style: .continuous)
+                    .strokeBorder(model.dstTargeted ? V.blue : V.barMuted,
+                                  style: StrokeStyle(lineWidth: 1.5, dash: model.destination == nil ? [6] : []))
+            )
+            .contentShape(Rectangle())
             .dropDestination(for: URL.self) { urls, _ in
                 if let dir = urls.first(where: isExistingDirectory) {
                     model.setDestination(dir)
@@ -248,15 +247,16 @@ struct ContentView: View {
                 return false
             } isTargeted: { model.dstTargeted = $0 }
 
-            HStack(spacing: 4) {
+            HStack(spacing: V.s1) {
                 Button {
                     if let url = pickURLs(files: false, multiple: false,
                                           message: "コピー先のフォルダを選択").first {
                         model.setDestination(url)
                     }
                 } label: {
-                    Image(systemName: "folder").frame(width: 16)
+                    Image(systemName: "folder").font(.system(size: 13))
                 }
+                .buttonStyle(VChipStyle())
                 .help("フォルダを選ぶ…")
 
                 destinationMenu
@@ -267,13 +267,13 @@ struct ContentView: View {
                         model.toggleFavorite(dest)
                     } label: {
                         Image(systemName: favorite ? "star.fill" : "star")
-                            .foregroundColor(favorite ? .yellow : .primary)
-                            .frame(width: 16)
+                            .font(.system(size: 13))
+                            .foregroundColor(favorite ? V.blueTint : V.text)
                     }
+                    .buttonStyle(VChipStyle())
                     .help(favorite ? "お気に入りから外す" : "お気に入りに追加")
                 }
             }
-            .controlSize(.small)
         }
         .disabled(model.busy)
     }
@@ -318,87 +318,75 @@ struct ContentView: View {
                 .disabled(model.recentFolders.isEmpty)
         } label: {
             Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 13))
+                .foregroundColor(V.text)
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
         }
-        .menuStyle(.button)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
         .help("最近・お気に入り")
     }
 
-    // MARK: Settings（動作・比較・処理）
+    // MARK: Settings
 
-    private func column<V: View>(_ title: String, @ViewBuilder _ content: () -> V) -> some View {
+    private func column<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(VFont.ui(11))
+                .foregroundColor(V.muted)
             content()
         }
     }
 
-    private var settingsBox: some View {
-        HStack(alignment: .bottom, spacing: 14) {
-            SlideToggle(selection: $model.operation)
+    private var settingsPanel: some View {
+        HStack(alignment: .bottom, spacing: V.s3) {
+            VSlideToggle(selection: $model.operation)
                 .help("コピー、または移動（照合したあと、移動元をゴミ箱へ入れます）")
 
             column("比較") {
-                HStack(spacing: 4) {
-                    Picker("比較", selection: $model.compare) {
-                        ForEach(CompareMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .help("同名ファイルを比べる基準。空欄（—）なら比べず、右の「処理」で扱いを決めます。同じ値のときはスキップします")
+                HStack(spacing: V.s1) {
+                    VSelect(options: CompareMode.allCases,
+                            selection: $model.compare,
+                            label: { $0.label })
+                        .help("同名ファイルを比べる基準。空欄（—）なら比べず、右の「処理」で扱いを決めます。同じ値のときはスキップします")
 
                     if model.compare != .none {
-                        Picker("残すほう", selection: $model.preferHigh) {
-                            Text(model.compare.highLabel).tag(true)
-                            Text(model.compare.lowLabel).tag(false)
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .fixedSize()
-                        .help("どちらを残すか")
+                        VSelect(options: [true, false],
+                                selection: $model.preferHigh,
+                                label: { $0 ? model.compare.highLabel : model.compare.lowLabel })
+                            .help("どちらを残すか")
                     }
                 }
             }
 
             column("処理") {
                 if model.compare == .none {
-                    Picker("処理", selection: $model.policy) {
-                        ForEach(PolicyChoice.allCases) { choice in
-                            Text(choice.label).tag(choice)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .help("同名ファイルがあったときの扱い")
+                    VSelect(options: PolicyChoice.allCases,
+                            selection: $model.policy,
+                            label: { $0.label })
+                        .help("同名ファイルがあったときの扱い")
                 } else {
-                    Picker("処理", selection: .constant(true)) {
-                        Text("残す").tag(true)
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(true)
-                    .help("比較で選んだほうを残します")
+                    VSelect(options: [true],
+                            selection: .constant(true),
+                            label: { _ in "残す" })
+                        .disabled(true)
+                        .help("比較で選んだほうを残します")
                 }
             }
 
             Spacer(minLength: 0)
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.10)))
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: V.rMd, style: .continuous).fill(V.row))
         .disabled(model.busy)
     }
 
     // MARK: Gear popover
 
     private var optionsPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: V.s3) {
             Toggle(isOn: Binding(
                 get: { model.verify || model.operation == .move },
                 set: { model.verify = $0 }
@@ -418,80 +406,86 @@ struct ContentView: View {
             }
             .help("すべて終わったらウインドウを閉じます。エラーや中止のときは閉じません。閉じるとアプリも終了します")
         }
-        .toggleStyle(.checkbox)
+        .toggleStyle(VCheckStyle())
         .padding(14)
+        .frame(width: 206)
+        .background(V.row)
     }
 
     // MARK: Actions / progress / log
 
     private var actionRow: some View {
-        HStack(spacing: 8) {
-            if model.isAnalyzing {
-                ProgressView().controlSize(.small)
-                Text("解析中 \(model.analyzeDone) / \(model.analyzeTotal)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+        HStack(spacing: V.s2) {
             if model.busy {
                 Button {
                     model.cancel()
                 } label: {
-                    Label("中止", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity, minHeight: 30)
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.fill").font(.system(size: 16))
+                        Text("中止").font(VFont.ui(17, .medium))
+                    }
+                    .foregroundColor(V.text)
+                    .frame(maxWidth: .infinity, minHeight: 50)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .controlSize(.large)
+                .buttonStyle(VEmbossStyle(kind: .chip))
             } else {
                 Button {
                     model.analyze()
                 } label: {
                     Image(systemName: "eye")
-                        .frame(minHeight: 30)
+                        .font(.system(size: 18))
+                        .foregroundColor(V.text)
+                        .frame(width: 50, height: 50)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+                .buttonStyle(VEmbossStyle(kind: .chip))
                 .help("差分を確認")
                 .disabled(!model.canStart)
 
                 Button {
                     model.start()
                 } label: {
-                    Label(model.operation == .move ? "移動開始" : "コピー開始", systemImage: "play.fill")
-                        .font(.title3.weight(.medium))
-                        .frame(maxWidth: .infinity, minHeight: 32)
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.fill").font(.system(size: 16))
+                        Text(model.operation == .move ? "移動開始" : "コピー開始")
+                            .font(VFont.ui(17, .medium))
+                    }
+                    .foregroundColor(V.onBrand)
+                    .frame(maxWidth: .infinity, minHeight: 50)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(VEmbossStyle(kind: .blue))
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canStart)
             }
         }
+        .frame(height: 50)
     }
 
     private var progressPane: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ProgressView(value: model.progress.fraction)
-            HStack {
-                if !model.busy, let summary = model.summaryText {
+        VStack(alignment: .leading, spacing: V.s1) {
+            VProgressBar(fraction: model.progress.fraction)
+            HStack(spacing: V.s2) {
+                if model.isAnalyzing {
+                    Text("差分を解析中… \(model.analyzeDone) / \(model.analyzeTotal)")
+                        .font(VFont.ui(11))
+                        .lineLimit(1)
+                } else if !model.busy, let summary = model.summaryText {
                     Text(summary)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.primary)
+                        .font(VFont.ui(11))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .help(summary)
                 } else {
                     Text(model.progress.current.isEmpty ? " " : model.progress.current)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .font(VFont.mono(11))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 Text("\(model.progress.filesDone) / \(model.progress.filesTotal)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(VFont.ui(11))
             }
+            .foregroundColor(V.muted)
+            .frame(height: 16)
         }
     }
 
@@ -500,17 +494,18 @@ struct ContentView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(model.logs) { entry in
-                        HStack(alignment: .top, spacing: 5) {
+                        HStack(spacing: 5) {
                             Image(systemName: entry.kind.icon)
-                                .font(.system(size: 10))
+                                .font(.system(size: 11))
                                 .foregroundColor(entry.kind.color)
                                 .frame(width: 12)
                             Text(entry.text)
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(VFont.mono(11))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer(minLength: 0)
                         }
+                        .frame(height: 16)
                         .id(entry.id)
                     }
                 }
@@ -524,48 +519,11 @@ struct ContentView: View {
             }
         }
         .frame(height: 56)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.10)))
+        .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.row))
     }
 }
 
-// MARK: - Slide toggle（コピー／移動）
-
-/// ラベルなしの大きなスライド式トグル。選んだ側へ色付きのつまみが動く。
-struct SlideToggle: View {
-    @Binding var selection: OperationMode
-
-    private let segment: CGFloat = 76
-    private let height: CGFloat = 32
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            Capsule().fill(Color.secondary.opacity(0.22))
-            Capsule()
-                .fill(Color.accentColor)
-                .frame(width: segment, height: height - 6)
-                .offset(x: selection == .copy ? 3 : segment + 3)
-                .animation(.easeInOut(duration: 0.18), value: selection)
-            HStack(spacing: 0) {
-                ForEach(OperationMode.allCases) { mode in
-                    Button {
-                        selection = mode
-                    } label: {
-                        Text(mode.label)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(selection == mode ? .white : .primary)
-                            .frame(width: segment, height: height)
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
-                }
-            }
-        }
-        .frame(width: segment * 2 + 6, height: height)
-    }
-}
-
-// MARK: - Preview sheet
+// MARK: - Preview sheet（差分の確認）
 
 struct PreviewSheet: View {
     let result: PreviewResult
@@ -590,70 +548,78 @@ struct PreviewSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("差分の確認").font(.headline)
+        VSheet(width: 620, height: 520, padding: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("差分の確認")
+                    .font(VFont.ui(15, .medium))
 
-            HStack(spacing: 6) {
-                chip(.new)
-                chip(.overwrite)
-                chip(.ask)
-                chip(.keepBoth)
-                chip(.same)
-                chip(.skip)
-                if result.count(.error) > 0 { chip(.error) }
-            }
-
-            Picker("表示", selection: $filter.kind) {
-                ForEach(PreviewFilter.Kind.allCases) { kind in
-                    Text(kind.label).tag(kind)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 6)],
+                          alignment: .leading, spacing: 6) {
+                    pill(.new)
+                    pill(.overwrite)
+                    pill(.ask)
+                    pill(.keepBoth)
+                    pill(.same)
+                    pill(.skip)
+                    if result.count(.error) > 0 { pill(.error) }
                 }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
-            List(filtered) { row in
-                HStack(spacing: 8) {
-                    Image(systemName: row.outcome.icon).foregroundColor(row.outcome.color)
-                    Text(row.path)
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                VPillSegmented(options: PreviewFilter.Kind.allCases,
+                               selection: $filter.kind,
+                               label: { $0.label })
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filtered) { row in
+                            let accent = row.outcome == .overwrite ? V.blueTint : V.muted
+                            HStack(spacing: 8) {
+                                Image(systemName: row.outcome.icon)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(accent)
+                                    .frame(width: 16)
+                                Text(row.path)
+                                    .font(VFont.mono(11))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 8)
+                                Text(row.outcome.label)
+                                    .font(VFont.ui(11))
+                                    .foregroundColor(accent)
+                                Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
+                                    .font(VFont.ui(11))
+                                    .foregroundColor(V.muted)
+                                    .frame(width: 64, alignment: .trailing)
+                            }
+                            .padding(.horizontal, 8)
+                            .frame(height: 28)
+                        }
+                    }
+                    .padding(4)
+                }
+                .background(RoundedRectangle(cornerRadius: V.rMd, style: .continuous).fill(V.row))
+
+                HStack(spacing: V.s2) {
+                    Text("\(result.rows.count) ファイル")
+                        .font(VFont.ui(11))
+                        .foregroundColor(V.muted)
                     Spacer()
-                    Text(row.outcome.label).font(.caption).foregroundColor(.secondary)
-                    Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 64, alignment: .trailing)
+                    Button("閉じる") { onClose() }
+                        .buttonStyle(VSheetButtonStyle())
+                        .keyboardShortcut(.cancelAction)
+                    Button(result.operation == .move ? "この内容で移動開始" : "この内容でコピー開始") { onStart() }
+                        .buttonStyle(VSheetButtonStyle(primary: true))
+                        .keyboardShortcut(.defaultAction)
                 }
-            }
-            .frame(minHeight: 240)
-
-            HStack {
-                Text("\(result.rows.count) ファイル")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button("閉じる") { onClose() }
-                    .keyboardShortcut(.cancelAction)
-                Button(result.operation == .move ? "この内容で移動開始" : "この内容でコピー開始") { onStart() }
-                    .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(18)
-        .frame(width: 620, height: 520)
     }
 
-    private func chip(_ outcome: PreviewOutcome) -> some View {
-        Label("\(outcome.label) \(result.count(outcome))", systemImage: outcome.icon)
-            .font(.caption.weight(.medium))
-            .foregroundColor(outcome.color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(outcome.color.opacity(0.15)))
+    private func pill(_ outcome: PreviewOutcome) -> some View {
+        VPill(icon: outcome.icon, text: "\(outcome.label) \(result.count(outcome))")
     }
 }
 
-// MARK: - Conflict sheet
+// MARK: - Conflict sheet（競合ダイアログ）
 
 struct ConflictSheet: View {
     let info: ConflictInfo
@@ -661,70 +627,80 @@ struct ConflictSheet: View {
     @StateObject private var choice = ConflictChoice()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("同じ名前のファイルがあります").font(.headline)
-            Text(info.relativePath)
-                .font(.system(.body, design: .monospaced))
-                .lineLimit(2)
-                .truncationMode(.middle)
+        VSheet(width: 600) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("同じ名前のファイルがあります")
+                    .font(VFont.ui(15, .medium))
+                Text(info.relativePath)
+                    .font(VFont.mono(13))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-            HStack(alignment: .top, spacing: 12) {
-                fileBox(title: "コピー元", snap: info.source, other: info.destination)
-                fileBox(title: "コピー先（既存）", snap: info.destination, other: info.source)
-            }
+                HStack(alignment: .top, spacing: V.s3) {
+                    fileCard(title: "コピー元", snap: info.source, other: info.destination)
+                    fileCard(title: "コピー先（既存）", snap: info.destination, other: info.source)
+                }
 
-            if info.identical {
-                Text("サイズと更新日時が同じです（同一ファイルの可能性が高い）")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+                if info.identical {
+                    Text("サイズと更新日時が同じです（同一ファイルの可能性が高い）")
+                        .font(VFont.ui(11))
+                        .foregroundColor(V.muted)
+                }
 
-            Toggle("以降の競合すべてに同じ処理を適用", isOn: $choice.applyToAll)
+                Toggle("以降の競合すべてに同じ処理を適用", isOn: $choice.applyToAll)
+                    .toggleStyle(VCheckStyle(boxLeading: true))
 
-            HStack {
-                Button("中止") { onDecide(nil) }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("スキップ") { decide(.skip) }
-                Button("両方残す") { decide(.keepBoth) }
-                Button("上書き") { decide(.overwrite) }
-                Button("新しいほうだけ上書き") { decide(.overwriteIfNewer) }
-                    .keyboardShortcut(.defaultAction)
+                HStack(spacing: V.s2) {
+                    Button("中止") { onDecide(nil) }
+                        .buttonStyle(VSheetButtonStyle())
+                        .keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("スキップ") { decide(.skip) }
+                        .buttonStyle(VSheetButtonStyle())
+                    Button("両方残す") { decide(.keepBoth) }
+                        .buttonStyle(VSheetButtonStyle())
+                    Button("上書き") { decide(.overwrite) }
+                        .buttonStyle(VSheetButtonStyle())
+                    Button("新しいほうだけ上書き") { decide(.overwriteIfNewer) }
+                        .buttonStyle(VSheetButtonStyle(primary: true))
+                        .keyboardShortcut(.defaultAction)
+                }
             }
         }
-        .padding(20)
-        .frame(width: 600)
     }
 
     private func decide(_ action: ConflictAction) {
         onDecide(ConflictDecision(action: action, applyToAll: choice.applyToAll))
     }
 
-    private func fileBox(title: String, snap: FileSnapshot, other: FileSnapshot) -> some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.caption).foregroundColor(.secondary)
-                Text(ByteCountFormatter.string(fromByteCount: snap.size, countStyle: .file))
-                    .font(.headline)
-                Text(snap.modified.formatted(date: .abbreviated, time: .standard))
-                if let badge = badge(snap, other) {
-                    Text(badge)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(badge == "新しい" ? Color.green.opacity(0.25) : Color.gray.opacity(0.25))
-                        .clipShape(Capsule())
-                }
+    private func fileCard(title: String, snap: FileSnapshot, other: FileSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(VFont.ui(11))
+                .foregroundColor(V.muted)
+            Text(ByteCountFormatter.string(fromByteCount: snap.size, countStyle: .file))
+                .font(VFont.ui(20, .medium))
+            Text(snap.modified.formatted(date: .long, time: .standard))
+                .font(VFont.ui(13))
+            if let badge = badge(snap, other) {
+                Text(badge.text)
+                    .font(VFont.ui(11, .bold))
+                    .foregroundColor(badge.isNewer ? V.ground : V.text)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(badge.isNewer ? V.light : V.chip))
+                    .padding(.top, 4)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
         }
+        .padding(V.s3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: V.rMd, style: .continuous).fill(V.row))
     }
 
-    private func badge(_ snap: FileSnapshot, _ other: FileSnapshot) -> String? {
+    private func badge(_ snap: FileSnapshot, _ other: FileSnapshot) -> (text: String, isNewer: Bool)? {
         let diff = snap.modified.timeIntervalSince(other.modified)
-        if diff > 2 { return "新しい" }
-        if diff < -2 { return "古い" }
+        if diff > 2 { return ("新しい", true) }
+        if diff < -2 { return ("古い", false) }
         return nil
     }
 }
