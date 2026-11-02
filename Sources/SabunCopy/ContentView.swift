@@ -112,7 +112,6 @@ struct ContentView: View {
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
         .foregroundColor(V.text)
-        .background(V.ground.ignoresSafeArea())
         .background(VWindowStyler())
         .onAppear { model.applyWindowLevel() }
         .toolbar {
@@ -282,51 +281,54 @@ struct ContentView: View {
     private var existingRecents: [URL] { model.recentFolders.filter(isExistingDirectory) }
 
     private var destinationMenu: some View {
-        Menu {
-            Section("お気に入り") {
-                if existingFavorites.isEmpty {
-                    Text("（まだありません。★で追加できます）")
-                }
-                ForEach(existingFavorites, id: \.self) { url in
-                    Button {
-                        model.setDestination(url)
-                    } label: {
-                        Label(tildePath(url), systemImage: "star.fill")
+        Image(systemName: "clock.arrow.circlepath")
+            .font(.system(size: 13))
+            .foregroundColor(V.text)
+            .frame(width: 28, height: 28)
+            .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
+            .overlay(
+                Menu {
+                    Section("お気に入り") {
+                        if existingFavorites.isEmpty {
+                            Text("（まだありません。★で追加できます）")
+                        }
+                        ForEach(existingFavorites, id: \.self) { url in
+                            Button {
+                                model.setDestination(url)
+                            } label: {
+                                Label(tildePath(url), systemImage: "star.fill")
+                            }
+                        }
                     }
-                }
-            }
-            Section("最近使ったフォルダ") {
-                if existingRecents.isEmpty {
-                    Text("（履歴はありません）")
-                }
-                ForEach(existingRecents, id: \.self) { url in
-                    Button {
-                        model.setDestination(url)
-                    } label: {
-                        Label(tildePath(url), systemImage: "clock")
+                    Section("最近使ったフォルダ") {
+                        if existingRecents.isEmpty {
+                            Text("（履歴はありません）")
+                        }
+                        ForEach(existingRecents, id: \.self) { url in
+                            Button {
+                                model.setDestination(url)
+                            } label: {
+                                Label(tildePath(url), systemImage: "clock")
+                            }
+                        }
                     }
+                    Divider()
+                    Menu("お気に入りから外す") {
+                        ForEach(model.favoriteFolders, id: \.self) { url in
+                            Button(tildePath(url)) { model.removeFavorite(url) }
+                        }
+                    }
+                    .disabled(model.favoriteFolders.isEmpty)
+                    Button("最近の履歴を消去") { model.clearRecents() }
+                        .disabled(model.recentFolders.isEmpty)
+                } label: {
+                    Color.clear
                 }
-            }
-            Divider()
-            Menu("お気に入りから外す") {
-                ForEach(model.favoriteFolders, id: \.self) { url in
-                    Button(tildePath(url)) { model.removeFavorite(url) }
-                }
-            }
-            .disabled(model.favoriteFolders.isEmpty)
-            Button("最近の履歴を消去") { model.clearRecents() }
-                .disabled(model.recentFolders.isEmpty)
-        } label: {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 13))
-                .foregroundColor(V.text)
-                .frame(width: 28, height: 28)
-                .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("最近・お気に入り")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .opacity(0.011)
+            )
+            .help("最近・お気に入り")
     }
 
     // MARK: Settings

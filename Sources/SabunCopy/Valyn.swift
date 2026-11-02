@@ -136,35 +136,41 @@ struct VSelect<T: Hashable>: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Menu {
-            ForEach(options, id: \.self) { option in
-                Button {
-                    selection = option
-                } label: {
-                    if option == selection {
-                        Label(label(option), systemImage: "checkmark")
-                    } else {
-                        Text(label(option))
+        // macOS の Menu は独自のラベルを崩すので、見た目は自前で描き、
+        // その上に透明な Menu を重ねてクリックを受ける
+        HStack(spacing: 6) {
+            Text(label(selection))
+                .font(VFont.ui(13, .medium))
+                .lineLimit(1)
+            if width != nil { Spacer(minLength: 0) }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .bold))
+        }
+        .foregroundColor(isEnabled ? V.text : V.muted)
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .frame(width: width, height: 30)
+        .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
+        .overlay(
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        selection = option
+                    } label: {
+                        if option == selection {
+                            Label(label(option), systemImage: "checkmark")
+                        } else {
+                            Text(label(option))
+                        }
                     }
                 }
+            } label: {
+                Color.clear
             }
-        } label: {
-            HStack(spacing: 6) {
-                Text(label(selection))
-                    .font(VFont.ui(13, .medium))
-                    .lineLimit(1)
-                if width != nil { Spacer(minLength: 0) }
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
-            }
-            .foregroundColor(isEnabled ? V.text : V.muted)
-            .padding(.leading, 10)
-            .padding(.trailing, 8)
-            .frame(width: width, height: 30)
-            .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .opacity(0.011)
+        )
         .fixedSize()
     }
 }
