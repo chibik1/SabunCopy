@@ -1,0 +1,17 @@
+{
+ "v": 3,
+ "createdOnFiles": {"v": 1, "at": "2026-11-02T00:32:00Z"},
+ "title": "差分コピー UIモックアップ",
+ "launch": {"view": "canvas"},
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {"x": 0, "y": 0, "w": 560, "h": 500, "title": "メイン画面", "is_interactive": true},
+  "Preview.dc.html": {"x": 640, "y": 0, "w": 700, "h": 600, "title": "差分の確認"},
+  "Conflict.dc.html": {"x": 1420, "y": 0, "w": 680, "h": 420, "title": "競合ダイアログ"}
+ },
+ "order": ["Main.dc.html", "Preview.dc.html", "Conflict.dc.html"],
+ "notes": {},
+ "designSystems": [
+  {"title": "Valyn", "namespace": "valyn", "artifact": "https://claude.ai/code/artifact/c46a1e40-feb9-48cc-89aa-3ef9f64365f1", "version": "1793578920-606b", "copiedAt": "2026-11-02T00:32:00Z"}
+ ]
+}

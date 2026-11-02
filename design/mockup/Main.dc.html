@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>差分コピー メイン画面</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--surface-ground:#080c06;--surface-row:#11150f;--surface-chip:#1b211a;--brand-blue:#4079bc;--brand-blue-tint:#6a99cc;--on-brand:#ffffff;--bar-muted:#383836;--text-primary:#ffffff;--text-muted:#9ea19b;--button-light:#ffffff;--backdrop-sky:#e1ebf5;--radius-sm:8px;--radius-md:12px;--radius-lg:18px;--radius-pill:999px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--font-sans:"Helvetica Neue","Noto Sans JP",Helvetica,Arial,system-ui,sans-serif}
+body{margin:0}
+.ic{width:16px;height:16px;flex:none;display:block}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.sel{appearance:none;-webkit-appearance:none;border:0;background:var(--surface-chip);color:var(--text-primary);font:500 13px var(--font-sans);height:30px;padding:0 24px 0 10px;border-radius:var(--radius-sm)}
+.sel:disabled{color:var(--text-muted)}
+button{font-family:var(--font-sans);cursor:pointer}
+.thumb{transition:transform .22s cubic-bezier(.3,.7,.2,1)}
+.emb{transition:transform .08s}
+.emb:active{transform:translateY(1px)}
+@media (prefers-reduced-motion:reduce){.thumb{transition:none}}
+</style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M8 11l4 4 4-4M5 13v6h14v-6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-folder-fill" viewBox="0 0 24 24" fill="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7zM14 3v5h5"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="12" r="9.3" stroke-width="3" stroke-dasharray="3 4.46"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4M12 8v4l3 2"/></symbol>
+<symbol id="i-star-fill" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.500 12l2.500 2.500 4.500-5"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></symbol>
+<symbol id="i-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9"/></symbol>
+<symbol id="i-new" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+<symbol id="i-over" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 0-14-5M4 4v4h4M4 12a8 8 0 0 0 14 5M20 20v-4h-4"/></symbol>
+<symbol id="i-skip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8l4 4-4 4"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+</defs></svg>
+<div style="width: 560px; height: 500px; box-sizing: border-box; padding: 28px 40px; background: var(--backdrop-sky); font-family: var(--font-sans); color: var(--text-primary)">
+<div style="position: relative; width: 480px; background: var(--surface-ground); border-radius: var(--radius-lg); overflow: visible">
+
+<div style="height: 40px; display: flex; align-items: center; padding: 0 12px; gap: 8px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--bar-muted)"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--bar-muted)"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--bar-muted)"></span>
+<span style="flex-grow: 1; text-align: center; font-size: 13px; font-weight: 500">差分コピー</span>
+<button onClick="{{onGear}}" aria-label="設定" aria-expanded="{{popOpen}}" style="width: 28px; height: 28px; margin-right: -4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg></button>
+</div>
+
+<sc-if value="{{popOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 42px; right: 12px; width: 206px; box-sizing: border-box; padding: 14px; background: var(--surface-row); border: 1px solid var(--surface-chip); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 12px; z-index: 5">
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span style="flex-grow: 1">ハッシュ照合</span><input type="checkbox" checked="{{yes}}" onChange="{{noop}}" style="margin: 0; width: 16px; height: 16px; accent-color: var(--brand-blue)"></label>
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px"><svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg><span style="flex-grow: 1">最前面に固定</span><input type="checkbox" checked="{{no}}" onChange="{{noop}}" style="margin: 0; width: 16px; height: 16px; accent-color: var(--brand-blue)"></label>
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px"><svg class="ic" aria-hidden="true"><use href="#i-exit"/></svg><span style="flex-grow: 1">処理後に閉じる</span><input type="checkbox" checked="{{yes}}" onChange="{{noop}}" style="margin: 0; width: 16px; height: 16px; accent-color: var(--brand-blue)"></label>
+</div>
+</sc-if>
+
+<div style="padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px">
+
+<div style="display: flex; align-items: flex-start; gap: 8px">
+<span style="width: 22px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--text-muted)"><svg class="ic" role="img" aria-label="コピー元"><use href="#i-up"/></svg></span>
+<div style="flex-grow: 1; height: 58px; box-sizing: border-box; border: 1.500px solid var(--bar-muted); border-radius: var(--radius-sm); padding: 6px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 15px">
+<div style="display: flex; align-items: center; gap: 6px"><svg class="ic" aria-hidden="true" style="width: 13px; height: 13px"><use href="#i-folder"/></svg>20261006_CTC_素材</div>
+<div style="display: flex; align-items: center; gap: 6px"><svg class="ic" aria-hidden="true" style="width: 13px; height: 13px"><use href="#i-doc"/></svg>S03_インタビュー.mov</div>
+<div style="display: flex; align-items: center; gap: 6px"><svg class="ic" aria-hidden="true" style="width: 13px; height: 13px"><use href="#i-doc"/></svg>S04_BGM_final.wav</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<button aria-label="追加…" style="width: 26px; height: 26px; border: 0; border-radius: var(--radius-sm); background: var(--surface-chip); color: var(--text-primary); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true" style="width: 14px; height: 14px"><use href="#i-plus"/></svg></button>
+<button aria-label="クリア" style="width: 26px; height: 26px; border: 0; border-radius: var(--radius-sm); background: var(--surface-chip); color: var(--text-primary); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true" style="width: 14px; height: 14px"><use href="#i-trash"/></svg></button>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 22px; display: flex; align-items: center; justify-content: center; color: var(--text-muted)"><svg class="ic" role="img" aria-label="コピー先"><use href="#i-down"/></svg></span>
+<div style="flex-grow: 1; height: 32px; box-sizing: border-box; border: 1.500px solid var(--bar-muted); border-radius: var(--radius-sm); padding: 0 10px; display: flex; align-items: center; gap: 6px; min-width: 0">
+<svg class="ic" aria-hidden="true" style="color: var(--brand-blue)"><use href="#i-folder-fill"/></svg>
+<span style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">~/Movies/案件/20261006_CTC/納品</span>
+</div>
+<div style="display: flex; gap: 4px">
+<button aria-label="フォルダを選ぶ…" style="width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: var(--surface-chip); color: var(--text-primary); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true" style="width: 14px; height: 14px"><use href="#i-folder"/></svg></button>
+<button aria-label="最近・お気に入り" style="width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: var(--surface-chip); color: var(--text-primary); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true" style="width: 14px; height: 14px"><use href="#i-clock"/></svg></button>
+<button aria-label="お気に入りから外す" style="width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: var(--surface-chip); color: var(--brand-blue-tint); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true" style="width: 14px; height: 14px"><use href="#i-star-fill"/></svg></button>
+</div>
+</div>
+
+<div style="display: flex; align-items: stretch; gap: 12px; padding: 10px; background: var(--surface-row); border-radius: var(--radius-md)">
+<div style="display: flex; position: relative; flex: none; width: 180px; box-sizing: border-box; padding: 4px; border-radius: var(--radius-pill); background: var(--brand-blue)">
+<span class="thumb" aria-hidden="true" style="position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: var(--radius-pill); background: var(--button-light); box-shadow: inset 0 -2px 0 rgba(8,12,6,0.2), 0 1px 3px rgba(0,0,0,0.4); transform: {{thumbX}}"></span>
+<button onClick="{{setCopy}}" aria-pressed="{{copyOn}}" style="flex: 1; border: 0; border-radius: var(--radius-pill); position: relative; z-index: 1; font-size: 14px; font-weight: 700; background: transparent; transition: color 0.2s; color: {{copyFg}}">コピー</button>
+<button onClick="{{setMove}}" aria-pressed="{{moveOn}}" style="flex: 1; border: 0; border-radius: var(--radius-pill); position: relative; z-index: 1; font-size: 14px; font-weight: 700; background: transparent; transition: color 0.2s; color: {{moveFg}}">移動</button>
+</div>
+<div style="display: flex; flex-direction: column; justify-content: flex-end; gap: 3px">
+<span style="font-size: 11px; color: var(--text-muted)">比較</span>
+<div style="display: flex; gap: 4px">
+<span style="position: relative; display: flex; align-items: center"><select class="sel" aria-label="比較"><option>更新日時</option><option>サイズ</option><option>—</option></select><svg class="ic" aria-hidden="true" style="position: absolute; right: 6px; width: 12px; height: 12px; pointer-events: none"><use href="#i-chev"/></svg></span>
+<span style="position: relative; display: flex; align-items: center"><select class="sel" aria-label="残すほう"><option>新しい</option><option>古い</option></select><svg class="ic" aria-hidden="true" style="position: absolute; right: 6px; width: 12px; height: 12px; pointer-events: none"><use href="#i-chev"/></svg></span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; justify-content: flex-end; gap: 3px">
+<span style="font-size: 11px; color: var(--text-muted)">処理</span>
+<span style="position: relative; display: flex; align-items: center"><select class="sel" aria-label="処理" disabled="{{yes}}"><option>残す</option></select><svg class="ic" aria-hidden="true" style="position: absolute; right: 6px; width: 12px; height: 12px; pointer-events: none; color: var(--text-muted)"><use href="#i-chev"/></svg></span>
+</div>
+</div>
+
+<div style="display: flex; gap: 8px; height: 50px">
+<a href="Preview.dc.html" aria-label="差分を確認" class="emb" style="box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.4); width: 50px; height: 50px; border-radius: var(--radius-md); background: var(--surface-chip); color: var(--text-primary); display: flex; align-items: center; justify-content: center"><svg class="ic" aria-hidden="true" style="width: 20px; height: 20px"><use href="#i-eye"/></svg></a>
+<sc-if value="{{isRunning}}" hint-placeholder-val="{{ false }}">
+<button onClick="{{onStop}}" class="emb" style="box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.4); flex-grow: 1; border: 0; border-radius: var(--radius-md); background: var(--surface-chip); color: var(--text-primary); font-size: 17px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px"><svg class="ic" aria-hidden="true" style="width: 18px; height: 18px"><use href="#i-stop"/></svg>中止</button>
+</sc-if>
+<sc-if value="{{notRunning}}" hint-placeholder-val="{{ true }}">
+<button onClick="{{onStart}}" class="emb" style="box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -2px 0 rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.4); flex-grow: 1; border: 0; border-radius: var(--radius-md); background: var(--brand-blue); color: var(--on-brand); font-size: 17px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px"><svg class="ic" aria-hidden="true" style="width: 18px; height: 18px"><use href="#i-play"/></svg>{{startLabel}}</button>
+</sc-if>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="height: 6px; border-radius: 3px; background: var(--surface-chip); overflow: hidden"><div style="height: 6px; background: var(--brand-blue); width: {{pct}}"></div></div>
+<div style="display: flex; align-items: center; gap: 8px; height: 16px">
+<span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--text-muted)" class="mono">{{currentText}}</span>
+<span style="font-size: 11px; color: var(--text-muted)">{{count}}</span>
+</div>
+</div>
+
+<div style="height: 56px; box-sizing: border-box; padding: 4px 6px; background: var(--surface-row); border-radius: var(--radius-sm); overflow: hidden; display: flex; flex-direction: column; gap: 1px">
+<sc-if value="{{hasLog}}" hint-placeholder-val="{{ true }}">
+<div class="mono" style="display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 16px"><svg class="ic" aria-hidden="true" style="width: 12px; height: 12px; color: var(--text-muted)"><use href="#i-new"/></svg>素材/S03_インタビュー.mov</div>
+<div class="mono" style="display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 16px"><svg class="ic" aria-hidden="true" style="width: 12px; height: 12px; color: var(--text-muted)"><use href="#i-over"/></svg>素材/S02_カット割.psd（上書き・新しい）</div>
+<div class="mono" style="display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 16px"><svg class="ic" aria-hidden="true" style="width: 12px; height: 12px; color: var(--text-muted)"><use href="#i-skip"/></svg>素材/S01_ロゴ.ai（スキップ・同じ）</div>
+</sc-if>
+</div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;phase&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;idle&quot;,&quot;options&quot;:[&quot;idle&quot;,&quot;running&quot;,&quot;done&quot;]},&quot;popover&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false},&quot;$preview&quot;:{&quot;width&quot;:560,&quot;height&quot;:500}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const phase = st.phase ?? this.props.phase ?? 'idle';
+    const pop = st.pop ?? this.props.popover ?? false;
+    const op = st.op ?? 'copy';
+    const move = op === 'move';
+    const verb = move ? '移動' : 'コピー';
+    const running = phase === 'running';
+    const done = phase === 'done';
+    let currentText = ' ';
+    if (running) currentText = '素材/S03_インタビュー.mov';
+    if (done) currentText = '128 ファイルを' + verb + 'しました（新規 96・上書き 21・スキップ 11）';
+    return {
+      yes: true, no: false, noop: () => {},
+      popOpen: !!pop,
+      onGear: () => this.setState({ pop: !pop }),
+      onStart: () => this.setState({ phase: 'running', pop: false }),
+      onStop: () => this.setState({ phase: 'idle' }),
+      setCopy: () => this.setState({ op: 'copy' }),
+      setMove: () => this.setState({ op: 'move' }),
+      copyOn: !move, moveOn: move,
+      thumbX: move ? 'translateX(100%)' : 'translateX(0)',
+      copyBg: move ? 'transparent' : 'var(--button-light)',
+      copyFg: move ? 'var(--on-brand)' : 'var(--surface-ground)',
+      moveBg: move ? 'var(--button-light)' : 'transparent',
+      moveFg: move ? 'var(--surface-ground)' : 'var(--on-brand)',
+      startLabel: verb + '開始',
+      isRunning: running, notRunning: !running,
+      hasLog: running || done,
+      pct: running ? '42%' : (done ? '100%' : '0%'),
+      count: running ? '54 / 128' : (done ? '128 / 128' : '0 / 0'),
+      currentText
+    };
+  }
+}
+</script>
+</body>
+</html>
