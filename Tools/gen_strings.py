@@ -71,6 +71,8 @@ EN = {
  "差分を確認できませんでした: %@": "Couldn’t check differences: %@",
  "開始できませんでした: %@": "Couldn’t start: %@",
  "フォルダを作成できません: %@ — %@": "Couldn’t create folder: %@ — %@",
+ "フォルダの中身を読み取れません: %@": "Can’t read the contents of folder: %@",
+ "読み取れません: %@ — %@": "Can’t read: %@ — %@",
  # ログ
  "%@：%ld ファイル（%@）": "%@: %ld files (%@)",
  "空になったフォルダをゴミ箱へ: %@": "Moved emptied folder to Trash: %@",

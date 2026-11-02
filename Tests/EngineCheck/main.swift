@@ -5,8 +5,11 @@
 import Foundation
 
 let fm = FileManager.default
-let root = URL(fileURLWithPath: NSTemporaryDirectory())
-    .appendingPathComponent("sabun-test-\(UUID().uuidString)")
+/// 実行ごとの ID。後片付けはこの ID を含むものだけを対象にする（他の実行や利用者のファイルに触れない）
+let runID = ProcessInfo.processInfo.environment["SABUN_TEST_ID"] ?? String(UUID().uuidString.prefix(12))
+/// テスト用ファイル名の接頭辞（移動テストでゴミ箱に入っても、この実行のものだと分かる）
+let P = "sabuntest_\(runID)_"
+let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("sabun-test-\(runID)")
 
 let old = Date(timeIntervalSinceNow: -86400 * 10)
 let new = Date(timeIntervalSinceNow: -3600)
@@ -29,22 +32,21 @@ final class Counter: @unchecked Sendable {
     var asked = 0
 }
 
-/// 名前に sabuntest_ を付けておく（移動でゴミ箱に入ったとき見分けるため）
 func makeCase(_ name: String) throws -> (src: URL, dst: URL) {
     let base = root.appendingPathComponent(name)
     let s = base.appendingPathComponent("src/proj")
     let d = base.appendingPathComponent("dst/proj")
-    try write(s.appendingPathComponent("sabuntest_new.txt"), "N", mtime: new)
-    try write(s.appendingPathComponent("sabuntest_same.txt"), "SAME", mtime: new)
-    try write(d.appendingPathComponent("sabuntest_same.txt"), "SAME", mtime: new)
-    try write(s.appendingPathComponent("sabuntest_srcnewer.txt"), "SRC-NEW", mtime: new)
-    try write(d.appendingPathComponent("sabuntest_srcnewer.txt"), "OLD", mtime: old)
-    try write(s.appendingPathComponent("sabuntest_dstnewer.txt"), "SRC-OLD", mtime: old)
-    try write(d.appendingPathComponent("sabuntest_dstnewer.txt"), "DST-NEW", mtime: new)
-    try write(s.appendingPathComponent("sabuntest_bigsrc.txt"), "BIGGER-SOURCE", mtime: new)
-    try write(d.appendingPathComponent("sabuntest_bigsrc.txt"), "small", mtime: new)
-    try write(s.appendingPathComponent("sabuntest_bigdst.txt"), "tiny", mtime: new)
-    try write(d.appendingPathComponent("sabuntest_bigdst.txt"), "BIGGER-DEST!!", mtime: new)
+    try write(s.appendingPathComponent("\(P)new.txt"), "N", mtime: new)
+    try write(s.appendingPathComponent("\(P)same.txt"), "SAME", mtime: new)
+    try write(d.appendingPathComponent("\(P)same.txt"), "SAME", mtime: new)
+    try write(s.appendingPathComponent("\(P)srcnewer.txt"), "SRC-NEW", mtime: new)
+    try write(d.appendingPathComponent("\(P)srcnewer.txt"), "OLD", mtime: old)
+    try write(s.appendingPathComponent("\(P)dstnewer.txt"), "SRC-OLD", mtime: old)
+    try write(d.appendingPathComponent("\(P)dstnewer.txt"), "DST-NEW", mtime: new)
+    try write(s.appendingPathComponent("\(P)bigsrc.txt"), "BIGGER-SOURCE", mtime: new)
+    try write(d.appendingPathComponent("\(P)bigsrc.txt"), "small", mtime: new)
+    try write(s.appendingPathComponent("\(P)bigdst.txt"), "tiny", mtime: new)
+    try write(d.appendingPathComponent("\(P)bigdst.txt"), "BIGGER-DEST!!", mtime: new)
     return (s, base.appendingPathComponent("dst"))
 }
 
@@ -60,9 +62,9 @@ func run(_ name: String, _ options: CopyOptions, counter: Counter = Counter()) a
     return (summary, src, dstRoot.appendingPathComponent("proj"))
 }
 
-func f(_ dir: URL, _ n: String) -> URL { dir.appendingPathComponent("sabuntest_\(n).txt") }
+func f(_ dir: URL, _ n: String) -> URL { dir.appendingPathComponent("\(P)\(n).txt") }
 
-func main() async throws {
+func runAll() async throws {
     // 1. 比較＝更新日時 / 新しいほうを残す
     do {
         var o = CopyOptions(); o.compare = .time; o.preferHigh = true
@@ -74,6 +76,8 @@ func main() async throws {
         check("time/新しい: 日時同じ→スキップ（サイズ違いでも）", text(f(r.dst, "bigsrc")) == "small")
         check("time/新しい: 集計 新規1 上書1 スキップ4",
               r.summary.copied == 1 && r.summary.overwritten == 1 && r.summary.skipped == 4)
+        let leftovers = ((try? fm.contentsOfDirectory(atPath: r.dst.path)) ?? []).filter { $0.hasPrefix(".sabun-") }
+        check("一時ファイル(.sabun-*)がコピー先に残らない", leftovers.isEmpty)
     }
     // 2. 比較＝更新日時 / 古いほうを残す
     do {
@@ -117,7 +121,7 @@ func main() async throws {
     do {
         var o = CopyOptions(); o.compare = .none; o.initialPolicy = .keepBoth
         let r = try await run("none-keepboth", o)
-        let copy = r.dst.appendingPathComponent("sabuntest_srcnewer (2).txt")
+        let copy = r.dst.appendingPathComponent("\(P)srcnewer (2).txt")
         check("なし/両方残す: 元のファイルはそのまま", text(f(r.dst, "srcnewer")) == "OLD")
         check("なし/両方残す: 別名でコピー元を保存", text(copy) == "SRC-NEW")
     }
@@ -145,13 +149,81 @@ func main() async throws {
               fm.fileExists(atPath: f(r.src, "bigsrc").path) && text(f(r.dst, "bigsrc")) == "small")
         check("移動: 残りがあるフォルダは消さない", fm.fileExists(atPath: r.src.path))
     }
+    // 11. 安全性（コードレビューの指摘）
+    let quiet: (CopyEngine, [URL], URL, CopyOptions) async -> CopySummary = { engine, sources, dest, options in
+        await engine.run(sources: sources, destination: dest, options: options,
+                         ask: { _ in nil }, progress: { _ in }, log: { _, _ in })
+    }
+    do { // 読めないフォルダがあるなら、一部だけコピーせず中止する
+        let base = root.appendingPathComponent("unreadable")
+        let src = base.appendingPathComponent("src/proj")
+        let dstRoot = base.appendingPathComponent("dst")
+        try write(src.appendingPathComponent("\(P)ok.txt"), "OK", mtime: new)
+        let locked = src.appendingPathComponent("locked")
+        try write(locked.appendingPathComponent("\(P)hidden.txt"), "HIDDEN", mtime: new)
+        try fm.createDirectory(at: dstRoot, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        let summary = await quiet(CopyEngine(), [src], dstRoot, CopyOptions())
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+        check("読めないフォルダがあれば、何もコピーせず中止する",
+              summary.fatalError != nil && !fm.fileExists(atPath: dstRoot.appendingPathComponent("proj").path))
+    }
+    do { // コピー先がシンボリックリンク経由でコピー元の内側
+        let base = root.appendingPathComponent("symlink-inside")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("sub/\(P)a.txt"), "A", mtime: new)
+        let link = base.appendingPathComponent("linkdest")
+        try fm.createSymbolicLink(at: link, withDestinationURL: src.appendingPathComponent("sub"))
+        let summary = await quiet(CopyEngine(), [src], link, CopyOptions())
+        check("コピー先がリンク経由でコピー元の内側なら中止する", summary.fatalError != nil)
+    }
+    do { // リンク経由で、コピー元と同じ場所へ書こうとする
+        let base = root.appendingPathComponent("symlink-same")
+        let srcParent = base.appendingPathComponent("src")
+        let src = srcParent.appendingPathComponent("proj")
+        try write(src.appendingPathComponent("\(P)a.txt"), "A", mtime: new)
+        let link = base.appendingPathComponent("linkdest")
+        try fm.createSymbolicLink(at: link, withDestinationURL: srcParent)
+        var o = CopyOptions(); o.initialPolicy = .overwrite
+        let summary = await quiet(CopyEngine(), [src], link, o)
+        check("リンク経由でコピー元と同じ場所に書くなら中止する", summary.fatalError != nil)
+        check("そのとき、コピー元のファイルは無事", text(src.appendingPathComponent("\(P)a.txt")) == "A")
+    }
+    do { // シンボリックリンクの上書き
+        let base = root.appendingPathComponent("symlink-overwrite")
+        let s = base.appendingPathComponent("src/proj")
+        let d = base.appendingPathComponent("dst/proj")
+        try fm.createDirectory(at: s, withIntermediateDirectories: true)
+        try fm.createDirectory(at: d, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: s.appendingPathComponent("\(P)link"), withDestinationURL: URL(fileURLWithPath: "/tmp/A-\(runID)"))
+        try fm.createSymbolicLink(at: d.appendingPathComponent("\(P)link"), withDestinationURL: URL(fileURLWithPath: "/tmp/B-\(runID)"))
+        var o = CopyOptions(); o.initialPolicy = .overwrite
+        _ = await quiet(CopyEngine(), [s], base.appendingPathComponent("dst"), o)
+        let target = try? fm.destinationOfSymbolicLink(atPath: d.appendingPathComponent("\(P)link").path)
+        check("シンボリックリンクを上書きできる", target == "/tmp/A-\(runID)")
+        let leftovers = ((try? fm.contentsOfDirectory(atPath: d.path)) ?? []).filter { $0.hasPrefix(".sabun-") }
+        check("リンクの上書きでも一時ファイルが残らない", leftovers.isEmpty)
+    }
+    do { // 書き込めないコピー先：失敗として数え、中途半端なものを残さない
+        let base = root.appendingPathComponent("readonly-dst")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("\(P)new.txt"), "N", mtime: new)
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try fm.createDirectory(at: dstProj, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dstProj.path)
+        let summary = await quiet(CopyEngine(), [src], base.appendingPathComponent("dst"), CopyOptions())
+        let names = (try? fm.contentsOfDirectory(atPath: dstProj.path)) ?? []
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dstProj.path)
+        check("書き込めないコピー先は失敗として数える", summary.failed == 1 && summary.copied == 0)
+        check("失敗したあとにファイルが残らない", names.isEmpty)
+    }
     // 10. 差分プレビューの判断が実行と一致する
     do {
         let (src, dstRoot) = try makeCase("analyze")
         var o = CopyOptions(); o.compare = .time; o.preferHigh = true
         let rows = try CopyEngine().analyze(sources: [src], destination: dstRoot, options: o) { _, _ in }
         func outcome(_ n: String) -> PreviewOutcome? {
-            rows.first { $0.path.hasSuffix("sabuntest_\(n).txt") }?.outcome
+            rows.first { $0.path.hasSuffix("\(P)\(n).txt") }?.outcome
         }
         check("プレビュー: 新規", outcome("new") == .new)
         check("プレビュー: 同一", outcome("same") == .same)
@@ -161,7 +233,7 @@ func main() async throws {
 }
 
 do {
-    try await main()
+    try await runAll()
 } catch {
     print("ERROR", error)
     failures += 1

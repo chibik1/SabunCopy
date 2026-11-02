@@ -42,6 +42,7 @@
 "スキップ（比較では同一でも内容が異なるため移動元を残しました）: %@" = "Skipped (same by comparison, but contents differ; source kept): %@";
 "スキップ（移動元は残します）: %@" = "Skipped (source kept): %@";
 "ハッシュ照合" = "Verify with hash";
+"フォルダの中身を読み取れません: %@" = "Can’t read the contents of folder: %@";
 "フォルダを作成できません: %@ — %@" = "Couldn’t create folder: %@ — %@";
 "フォルダを選ぶ…" = "Choose folder…";
 "上書き" = "Overwrite";
@@ -99,6 +100,7 @@
 "空になったフォルダをゴミ箱へ: %@" = "Moved emptied folder to Trash: %@";
 "空フォルダ整理 %ld" = "Emptied folders %ld";
 "設定" = "Settings";
+"読み取れません: %@ — %@" = "Can’t read: %@ — %@";
 "追加…" = "Add…";
 "閉じる" = "Close";
 "開始できませんでした: %@" = "Couldn’t start: %@";
