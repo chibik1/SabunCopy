@@ -26,10 +26,10 @@ final class PreviewFilter: ObservableObject {
         case all, new, changed, skipped
         var label: String {
             switch self {
-            case .all: return "すべて"
-            case .new: return "新規"
-            case .changed: return "上書き・確認"
-            case .skipped: return "スキップ"
+            case .all: return L("すべて")
+            case .new: return L("新規")
+            case .changed: return L("上書き・確認")
+            case .skipped: return L("スキップ")
             }
         }
     }
@@ -53,13 +53,13 @@ private extension PreviewOutcome {
 
     var label: String {
         switch self {
-        case .new: return "新規"
-        case .overwrite: return "上書き"
-        case .same: return "同一"
-        case .skip: return "スキップ"
-        case .ask: return "確認"
-        case .keepBoth: return "両方残す"
-        case .error: return "エラー"
+        case .new: return L("新規")
+        case .overwrite: return L("上書き")
+        case .same: return L("同一")
+        case .skip: return L("スキップ")
+        case .ask: return L("確認")
+        case .keepBoth: return L("両方残す")
+        case .error: return L("エラー")
         }
     }
 }
@@ -184,7 +184,7 @@ struct ContentView: View {
             VStack(spacing: V.s1) {
                 Button {
                     model.addSources(pickURLs(files: true, multiple: true,
-                                              message: "コピーするファイル・フォルダを選択"))
+                                              message: L("コピーするファイル・フォルダを選択")))
                 } label: {
                     Image(systemName: "plus").font(.system(size: 13))
                 }
@@ -249,7 +249,7 @@ struct ContentView: View {
             HStack(spacing: V.s1) {
                 Button {
                     if let url = pickURLs(files: false, multiple: false,
-                                          message: "コピー先のフォルダを選択").first {
+                                          message: L("コピー先のフォルダを選択")).first {
                         model.setDestination(url)
                     }
                 } label: {
@@ -270,7 +270,7 @@ struct ContentView: View {
                             .foregroundColor(favorite ? V.blueTint : V.text)
                     }
                     .buttonStyle(VChipStyle())
-                    .help(favorite ? "お気に入りから外す" : "お気に入りに追加")
+                    .help(LocalizedStringKey(favorite ? "お気に入りから外す" : "お気に入りに追加"))
                 }
             }
         }
@@ -333,7 +333,7 @@ struct ContentView: View {
 
     // MARK: Settings
 
-    private func column<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+    private func column<C: View>(_ title: LocalizedStringKey, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(VFont.ui(11))
@@ -352,14 +352,14 @@ struct ContentView: View {
                     VSelect(options: CompareMode.allCases,
                             selection: $model.compare,
                             label: { $0.label },
-                            width: 86)
+                            measure: CompareMode.allCases.map(\.label))
                         .help("同名ファイルを比べる基準。空欄（—）なら比べず、右の「処理」で扱いを決めます。同じ値のときはスキップします")
 
                     // 空欄のときも場所は空けておく（「処理」の位置を動かさない）
                     VSelect(options: [true, false],
                             selection: $model.preferHigh,
                             label: { $0 ? model.compare.highLabel : model.compare.lowLabel },
-                            width: 72)
+                            measure: [L("新しい"), L("古い"), L("大きい"), L("小さい")])
                         .opacity(model.compare == .none ? 0 : 1)
                         .allowsHitTesting(model.compare != .none)
                         .accessibilityHidden(model.compare == .none)
@@ -372,13 +372,13 @@ struct ContentView: View {
                     VSelect(options: PolicyChoice.allCases,
                             selection: $model.policy,
                             label: { $0.label },
-                            width: 86)
+                            measure: PolicyChoice.allCases.map(\.label) + [L("残す")])
                         .help("同名ファイルがあったときの扱い")
                 } else {
                     VSelect(options: [true],
                             selection: .constant(true),
-                            label: { _ in "残す" },
-                            width: 86)
+                            label: { _ in L("残す") },
+                            measure: PolicyChoice.allCases.map(\.label) + [L("残す")])
                         .disabled(true)
                         .help("比較で選んだほうを残します")
                 }
@@ -454,7 +454,7 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "play.fill").font(.system(size: 16))
-                        Text(model.operation == .move ? "移動開始" : "コピー開始")
+                        Text(model.operation == .move ? L("移動開始") : L("コピー開始"))
                             .font(VFont.ui(17, .medium))
                     }
                     .foregroundColor(V.onBrand)
@@ -473,7 +473,7 @@ struct ContentView: View {
             VProgressBar(fraction: model.progress.fraction)
             HStack(spacing: V.s2) {
                 if model.isAnalyzing {
-                    Text("差分を解析中… \(model.analyzeDone) / \(model.analyzeTotal)")
+                    Text(L("差分を解析中… %ld / %ld", model.analyzeDone, model.analyzeTotal))
                         .font(VFont.ui(11))
                         .lineLimit(1)
                 } else if !model.busy, let summary = model.summaryText {
@@ -607,14 +607,14 @@ struct PreviewSheet: View {
                 .background(RoundedRectangle(cornerRadius: V.rMd, style: .continuous).fill(V.row))
 
                 HStack(spacing: V.s2) {
-                    Text("\(result.rows.count) ファイル")
+                    Text(L("%ld ファイル", result.rows.count))
                         .font(VFont.ui(11))
                         .foregroundColor(V.muted)
                     Spacer()
                     Button("閉じる") { onClose() }
                         .buttonStyle(VSheetButtonStyle())
                         .keyboardShortcut(.cancelAction)
-                    Button(result.operation == .move ? "この内容で移動開始" : "この内容でコピー開始") { onStart() }
+                    Button(result.operation == .move ? L("この内容で移動開始") : L("この内容でコピー開始")) { onStart() }
                         .buttonStyle(VSheetButtonStyle(primary: true))
                         .keyboardShortcut(.defaultAction)
                 }
@@ -645,8 +645,8 @@ struct ConflictSheet: View {
                     .truncationMode(.middle)
 
                 HStack(alignment: .top, spacing: V.s3) {
-                    fileCard(title: "コピー元", snap: info.source, other: info.destination)
-                    fileCard(title: "コピー先（既存）", snap: info.destination, other: info.source)
+                    fileCard(title: L("コピー元"), snap: info.source, other: info.destination)
+                    fileCard(title: L("コピー先（既存）"), snap: info.destination, other: info.source)
                 }
 
                 if info.identical {
@@ -707,8 +707,8 @@ struct ConflictSheet: View {
 
     private func badge(_ snap: FileSnapshot, _ other: FileSnapshot) -> (text: String, isNewer: Bool)? {
         let diff = snap.modified.timeIntervalSince(other.modified)
-        if diff > 2 { return ("新しい", true) }
-        if diff < -2 { return ("古い", false) }
+        if diff > 2 { return (L("新しい"), true) }
+        if diff < -2 { return (L("古い"), false) }
         return nil
     }
 }

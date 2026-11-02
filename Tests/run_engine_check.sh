@@ -4,9 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 OUT="$(mktemp -d)/engine_check"
-swiftc -O Sources/SabunCopy/CopyEngine.swift Tests/EngineCheck/main.swift -o "$OUT"
-"$OUT"
-status=$?
+swiftc -O Sources/SabunCopy/CopyEngine.swift Sources/SabunCopy/Localization.swift Tests/EngineCheck/main.swift -o "$OUT"
+status=0
+"$OUT" || status=$?
 
 # 後始末：一時フォルダと、移動テストでゴミ箱に入ったテスト用ファイル
 rm -rf "${TMPDIR:-/tmp}"/sabun-test-* 2>/dev/null || true

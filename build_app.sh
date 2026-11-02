@@ -13,6 +13,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/SabunCopy" "$APP/Contents/MacOS/SabunCopy"
 cp Info.plist "$APP/Contents/Info.plist"
+# 多言語（日本語・英語）の文字列
+cp -R Resources/*.lproj "$APP/Contents/Resources/"
 codesign --force --deep --sign - "$APP"
 
 echo "できました: $(pwd)/$APP"
@@ -23,6 +25,6 @@ if [[ "${1:-}" == "--install" ]]; then
     cp -R "$APP" "$HOME/Applications/$APP"
     /System/Library/CoreServices/pbs -update || true
     echo "インストールしました: $HOME/Applications/$APP"
-    echo "Finderの右クリック → サービス（または クイックアクション）に「差分コピー」が出ます。"
+    echo "Finderの右クリック → サービス（または クイックアクション）に「SabunCopy」が出ます。"
     echo "出ない場合: システム設定 → キーボード → キーボードショートカット → サービス → ファイルおよびフォルダ で有効にしてください。"
 fi

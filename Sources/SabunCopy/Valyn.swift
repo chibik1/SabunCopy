@@ -130,8 +130,18 @@ struct VSelect<T: Hashable>: View {
     let options: [T]
     @Binding var selection: T
     let label: (T) -> String
-    /// 指定すると幅を固定する（選択肢のうち最も長いものが収まる幅にする）
-    var width: CGFloat? = nil
+    /// 幅の基準にする文字列。省略すると選択肢の表示名。
+    /// いちばん長いものが収まる幅に固定する（言語が変わっても、選んでも、幅は動かない）。
+    var measure: [String]? = nil
+
+    private var fixedWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let strings = measure ?? options.map(label)
+        let widest = strings
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        return ceil(widest) + 34   // 左10 + 右8 + 矢印10 + 間6
+    }
 
     @Environment(\.isEnabled) private var isEnabled
 
@@ -142,14 +152,14 @@ struct VSelect<T: Hashable>: View {
             Text(label(selection))
                 .font(VFont.ui(13, .medium))
                 .lineLimit(1)
-            if width != nil { Spacer(minLength: 0) }
+            Spacer(minLength: 0)
             Image(systemName: "chevron.down")
                 .font(.system(size: 10, weight: .bold))
         }
         .foregroundColor(isEnabled ? V.text : V.muted)
         .padding(.leading, 10)
         .padding(.trailing, 8)
-        .frame(width: width, height: 30)
+        .frame(width: fixedWidth, height: 30)
         .background(RoundedRectangle(cornerRadius: V.rSm, style: .continuous).fill(V.chip))
         .overlay(
             Menu {

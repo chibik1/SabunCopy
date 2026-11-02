@@ -44,10 +44,10 @@ enum PolicyChoice: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .ask: return "確認"
-        case .overwrite: return "上書き"
-        case .skip: return "スキップ"
-        case .keepBoth: return "両方残す"
+        case .ask: return L("確認")
+        case .overwrite: return L("上書き")
+        case .skip: return L("スキップ")
+        case .keepBoth: return L("両方残す")
         }
     }
 
@@ -231,7 +231,7 @@ final class CopyModel: ObservableObject {
         isAnalyzing = false
         analyzeTask = nil
         if let error = error {
-            summaryText = "差分を確認できませんでした: \(error)"
+            summaryText = L("差分を確認できませんでした: %@", error)
         } else if let result = result {
             preview = result
         }
@@ -307,20 +307,22 @@ final class CopyModel: ObservableObject {
         isRunning = false
         task = nil
         if let err = s.fatalError {
-            summaryText = "開始できませんでした: \(err)"
+            summaryText = L("開始できませんでした: %@", err)
             appendLog(.error, err)
             return
         }
         var parts: [String] = []
-        if s.copied > 0 { parts.append("新規\(operation.label) \(s.copied)") }
-        if s.overwritten > 0 { parts.append("上書き \(s.overwritten)") }
-        if s.renamed > 0 { parts.append("別名保存 \(s.renamed)") }
-        if s.skipped > 0 { parts.append("スキップ \(s.skipped)") }
-        if s.failed > 0 { parts.append("失敗 \(s.failed)") }
-        if s.movedSources > 0 { parts.append("移動元をゴミ箱へ \(s.movedSources)") }
-        if s.removedDirs > 0 { parts.append("空フォルダ整理 \(s.removedDirs)") }
-        let body = parts.isEmpty ? "処理したファイルはありません" : parts.joined(separator: " / ")
-        summaryText = (s.cancelled ? "中止しました。 " : "完了しました。 ") + body
+        if s.copied > 0 {
+            parts.append(operation == .move ? L("新規移動 %ld", s.copied) : L("新規コピー %ld", s.copied))
+        }
+        if s.overwritten > 0 { parts.append(L("上書き %ld", s.overwritten)) }
+        if s.renamed > 0 { parts.append(L("別名保存 %ld", s.renamed)) }
+        if s.skipped > 0 { parts.append(L("スキップ %ld", s.skipped)) }
+        if s.failed > 0 { parts.append(L("失敗 %ld", s.failed)) }
+        if s.movedSources > 0 { parts.append(L("移動元をゴミ箱へ %ld", s.movedSources)) }
+        if s.removedDirs > 0 { parts.append(L("空フォルダ整理 %ld", s.removedDirs)) }
+        let body = parts.isEmpty ? L("処理したファイルはありません") : parts.joined(separator: " / ")
+        summaryText = s.cancelled ? L("中止しました。 %@", body) : L("完了しました。 %@", body)
 
         // エラーも中止もなく終わったときだけ、少し待ってからウインドウを閉じる
         if autoCloseWhenDone && !s.cancelled && s.failed == 0 {

@@ -71,7 +71,7 @@ struct SabunCopyApp: App {
     }
 
     var body: some Scene {
-        Window("差分コピー", id: "main") {
+        Window("SabunCopy", id: "main") {
             ContentView()
         }
         .windowResizability(.contentSize)
