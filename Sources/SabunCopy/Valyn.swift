@@ -564,8 +564,8 @@ struct VWindowStyler: NSViewRepresentable {
             }()
             var base = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
-            // 透明度を上げるほどベース色が薄くなる（いちばん透けても 35% は残して文字を読みやすくする）
-            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - 0.65 * glass))
+            // 透明度を上げるほどベース色が薄くなる（いちばん透けても 10% は残す）
+            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - 0.9 * glass))
         }
 
         /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
