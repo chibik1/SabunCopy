@@ -560,7 +560,8 @@ struct VWindowStyler: NSViewRepresentable {
                 frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
                 return v
             }()
-            _ = blur
+            // ぼかした層の濃さ。下げるほど、背後がぼけずにそのまま透ける
+            blur.alphaValue = CGFloat(1 - 0.5 * glass)
             let overlay = tint ?? {
                 let v = NSView(frame: frame.bounds)
                 v.identifier = tintID
