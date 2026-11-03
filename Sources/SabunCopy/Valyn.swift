@@ -555,20 +555,30 @@ struct VWindowStyler: NSViewRepresentable {
             guard let frame = window.contentView?.superview else { return }
             let effectID = NSUserInterfaceItemIdentifier("sabun.glass.effect")
             let tintID = NSUserInterfaceItemIdentifier("sabun.glass.tint")
-            let effect = frame.subviews.first { $0.identifier == effectID } as? NSVisualEffectView
+            let effect = frame.subviews.first { $0.identifier == effectID }
             let tint = frame.subviews.first { $0.identifier == tintID }
             if glass <= 0.001 {
                 effect?.removeFromSuperview()
                 tint?.removeFromSuperview()
                 return
             }
-            let blur = effect ?? {
-                let v = NSVisualEffectView(frame: frame.bounds)
+            let blur: NSView = effect ?? {
+                let v: NSView
+                if #available(macOS 26.0, *) {
+                    // OS 標準の Liquid Glass
+                    let g = NSGlassEffectView(frame: frame.bounds)
+                    g.style = .regular
+                    g.cornerRadius = 0
+                    v = g
+                } else {
+                    let e = NSVisualEffectView(frame: frame.bounds)
+                    e.blendingMode = .behindWindow
+                    e.material = .menu
+                    e.state = .active
+                    v = e
+                }
                 v.identifier = effectID
                 v.autoresizingMask = [.width, .height]
-                v.blendingMode = .behindWindow
-                v.material = .menu
-                v.state = .active
                 frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
                 return v
             }()
