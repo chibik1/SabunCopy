@@ -26,14 +26,21 @@ enum VNS {
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? ns(light) : ns(dark)
         }
     }
+    /// すりガラスのとき、行やチップも少し透かす（alpha = 1 - k × 透明度）
+    static func dynGlass(_ dark: UInt32, _ light: UInt32, k: Double) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let base = appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? ns(light) : ns(dark)
+            return base.withAlphaComponent(CGFloat(1 - k * CopyModel.shared.glass))
+        }
+    }
     static let ground = dyn(0x121519, 0xe9edf2)
 }
 
 enum V {
     // Color（左がダーク、右がライト）
     static let ground = Color(nsColor: VNS.ground)     // surface-ground
-    static let row = Color(nsColor: VNS.dyn(0x1b1f25, 0xf7f9fb))        // surface-row
-    static let chip = Color(nsColor: VNS.dyn(0x262b32, 0xdce2ea))       // surface-chip
+    static let row = Color(nsColor: VNS.dynGlass(0x1b1f25, 0xf7f9fb, k: 0.6))        // surface-row
+    static let chip = Color(nsColor: VNS.dynGlass(0x262b32, 0xdce2ea, k: 0.5))       // surface-chip
     static let blue = Color(hex: 0x4079bc)       // brand-blue
     /// 青いパーツ共通のごく薄いグラデーション（上がわずかに明るい）
     static let blueFill = LinearGradient(
@@ -548,7 +555,7 @@ struct VWindowStyler: NSViewRepresentable {
                 v.identifier = effectID
                 v.autoresizingMask = [.width, .height]
                 v.blendingMode = .behindWindow
-                v.material = .underWindowBackground
+                v.material = .menu
                 v.state = .active
                 frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
                 return v
