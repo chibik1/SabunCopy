@@ -26,6 +26,12 @@ enum VNS {
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? ns(light) : ns(dark)
         }
     }
+    /// アクセントカラーに白／黒を少し混ぜた色（グラデーション・淡い青用）
+    static func accent(mix: NSColor, _ fraction: CGFloat) -> NSColor {
+        NSColor(name: nil) { _ in
+            NSColor.controlAccentColor.blended(withFraction: fraction, of: mix) ?? NSColor.controlAccentColor
+        }
+    }
     /// すりガラスのとき、行やチップも少し透かす（alpha = 1 - k × 透明度）
     static func dynGlass(_ dark: UInt32, _ light: UInt32, k: Double) -> NSColor {
         NSColor(name: nil) { appearance in
@@ -52,14 +58,18 @@ enum V {
     static let ground = Color(nsColor: VNS.ground)     // surface-ground
     static let row = Color(nsColor: VNS.dynGlass(0x1b1f25, 0xf7f9fb, k: 0.85))        // surface-row
     static let chip = Color(nsColor: VNS.dynGlass(0x262b32, 0xdce2ea, k: 0.8))       // surface-chip
-    static let blue = Color(hex: 0x4079bc)       // brand-blue
+    /// OS 標準のアクセントカラー（チェックボックスなどと同じ青。システム設定で変えた色にも従う）
+    static let blue = Color(nsColor: .controlAccentColor)
     /// 青いパーツ共通のごく薄いグラデーション（上がわずかに明るい）
     static let blueFill = LinearGradient(
-        colors: [Color(hex: 0x4a84c8), Color(hex: 0x3a72b2)],
+        colors: [Color(nsColor: VNS.accent(mix: .white, 0.10)), Color(nsColor: VNS.accent(mix: .black, 0.08))],
         startPoint: .top, endPoint: .bottom)
-    static let blueTint = Color(nsColor: VNS.dyn(0x6a99cc, 0x2f67a8))   // brand-blue-tint
+    static let blueTint = Color(nsColor: VNS.accent(mix: .white, 0.30))   // brand-blue-tint
     static let onBrand = Color(hex: 0xffffff)
-    static let barMuted = Color(nsColor: VNS.dyn(0x383836, 0xb8c0ca))
+    static let barMuted = Color(nsColor: NSColor(name: nil) { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? NSColor(srgbRed: 0.72, green: 0.75, blue: 0.79, alpha: 1)
+                                                      : NSColor.white.withAlphaComponent(0.5)
+    })
     static let text = Color(nsColor: VNS.inkAdaptive(dark: 0xffffff, light: 0x1b2027, whiteAlpha: 1))       // text-primary
     static let muted = Color(nsColor: VNS.inkAdaptive(dark: 0x9ea19b, light: 0x5b6470, whiteAlpha: 0.72))      // text-muted
     static let light = Color(hex: 0xffffff)      // button-light
@@ -611,6 +621,15 @@ struct VWindowStyler: NSViewRepresentable {
             guard let frame = window.contentView?.superview else { return }
             var ground = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { ground = VNS.ground.cgColor }
+            if ProcessInfo.processInfo.environment["SABUN_DUMP"] != nil {
+                func dump(_ v: NSView, _ d: Int) -> String {
+                    let layerColor = v.layer?.backgroundColor.flatMap { NSColor(cgColor: $0) }?.description ?? "-"
+                    var out = String(repeating: "  ", count: d) + "\(type(of: v)) \(v.frame) hidden=\(v.isHidden) alpha=\(v.alphaValue) bg=\(layerColor)\n"
+                    for s in v.subviews { out += dump(s, d + 1) }
+                    return out
+                }
+                try? dump(frame, 0).write(toFile: "/tmp/sabun_dump.txt", atomically: true, encoding: .utf8)
+            }
             let glassOn = CopyModel.shared.glass > 0.001
             let lightGlass = CopyModel.shared.glass > VNS.lightGlassOn
                 && window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
@@ -624,7 +643,8 @@ struct VWindowStyler: NSViewRepresentable {
                                 sub.isHidden = glassOn
                             } else if n == "NSView" {
                                 sub.wantsLayer = true
-                                var fillColor: CGColor = glassOn ? NSColor.clear.cgColor : ground
+                                // すりガラスのときは、OS がタイトルバーに重ねる明るい下地を打ち消して、本体と同じ濃さにする
+                                var fillColor: CGColor = glassOn ? CGColor(srgbRed: 0.04, green: 0.05, blue: 0.07, alpha: 0.5) : ground
                                 if glassOn, lightGlass {
                                     // ライト＋すりガラス：本体と同じ暗めのガラス色
                                     fillColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
@@ -636,6 +656,8 @@ struct VWindowStyler: NSViewRepresentable {
                     }
                 }
                 walk(container)
+                // タイトルバーの装飾（OS が重ねる縁取りやぼかし）。すりガラスのときは消して、本体と同じ見た目にする
+                for deco in container.subviews where name(deco) == "_NSTitlebarDecorationView" { deco.isHidden = glassOn }
             }
         }
     }
