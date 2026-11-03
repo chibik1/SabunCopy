@@ -41,13 +41,13 @@ enum VNS {
     }
     /// ライトでも、すりガラスが一定以上のときは文字を白にする（暗めのガラスに白文字）
     static let lightGlassOn = 0.3
-    static func inkAdaptive(dark: UInt32, light: UInt32, whiteAlpha: CGFloat) -> NSColor {
+    static func inkAdaptive(dark: UInt32, light: UInt32, whiteAlpha: CGFloat, darkAlpha: CGFloat = 1) -> NSColor {
         NSColor(name: nil) { appearance in
             if appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua {
                 if CopyModel.shared.glass > lightGlassOn { return NSColor.white.withAlphaComponent(whiteAlpha) }
                 return ns(light)
             }
-            return ns(dark)
+            return darkAlpha < 1 ? NSColor.white.withAlphaComponent(darkAlpha) : ns(dark)
         }
     }
     static let ground = dyn(0x121519, 0xe9edf2)
@@ -71,7 +71,7 @@ enum V {
                                                       : NSColor.white.withAlphaComponent(0.5)
     })
     static let text = Color(nsColor: VNS.inkAdaptive(dark: 0xffffff, light: 0x1b2027, whiteAlpha: 1))       // text-primary
-    static let muted = Color(nsColor: VNS.inkAdaptive(dark: 0x9ea19b, light: 0x5b6470, whiteAlpha: 0.72))      // text-muted
+    static let muted = Color(nsColor: VNS.inkAdaptive(dark: 0x9ea19b, light: 0x5b6470, whiteAlpha: 0.8, darkAlpha: 0.8))      // text-muted
     static let light = Color(hex: 0xffffff)      // button-light
     /// スライドトグルのつまみ。真っ白よりひと段やわらかい白
     static let thumb = Color(nsColor: VNS.dyn(0xe4e9f0, 0xffffff))
@@ -570,29 +570,33 @@ struct VWindowStyler: NSViewRepresentable {
             if glass <= 0.001 {
                 effect?.removeFromSuperview()
                 tint?.removeFromSuperview()
+                frame.subviews.filter { $0.identifier?.rawValue == "sabun.glass.liquid" }.forEach { $0.removeFromSuperview() }
                 return
             }
             let blur: NSView = effect ?? {
-                let v: NSView
-                if #available(macOS 26.0, *) {
-                    // OS 標準の Liquid Glass
-                    let g = NSGlassEffectView(frame: frame.bounds)
-                    g.style = .regular
-                    g.cornerRadius = 0
-                    v = g
-                } else {
-                    let e = NSVisualEffectView(frame: frame.bounds)
-                    e.blendingMode = .behindWindow
-                    e.material = .menu
-                    e.state = .active
-                    v = e
-                }
-                v.identifier = effectID
-                v.autoresizingMask = [.width, .height]
-                frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
-                return v
+                // 背後をぼかす素材（ぼかし具合のスライダーで濃さを変える）
+                let e = NSVisualEffectView(frame: frame.bounds)
+                e.blendingMode = .behindWindow
+                e.material = .menu
+                e.state = .active
+                e.identifier = effectID
+                e.autoresizingMask = [.width, .height]
+                frame.addSubview(e, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
+                return e
             }()
             blur.alphaValue = CGFloat(CopyModel.shared.blur)
+            // OS 標準の Liquid Glass（縁のハイライトなど）を、ぼかしの上に重ねる
+            if #available(macOS 26.0, *) {
+                let glassID = NSUserInterfaceItemIdentifier("sabun.glass.liquid")
+                if !frame.subviews.contains(where: { $0.identifier == glassID }) {
+                    let g = NSGlassEffectView(frame: frame.bounds)
+                    g.style = .clear
+                    g.cornerRadius = 0
+                    g.identifier = glassID
+                    g.autoresizingMask = [.width, .height]
+                    frame.addSubview(g, positioned: .above, relativeTo: blur)
+                }
+            }
             let overlay = tint ?? {
                 let v = NSView(frame: frame.bounds)
                 v.identifier = tintID
@@ -643,8 +647,7 @@ struct VWindowStyler: NSViewRepresentable {
                                 sub.isHidden = glassOn
                             } else if n == "NSView" {
                                 sub.wantsLayer = true
-                                // すりガラスのときは、OS がタイトルバーに重ねる明るい下地を打ち消して、本体と同じ濃さにする
-                                var fillColor: CGColor = glassOn ? CGColor(srgbRed: 0.04, green: 0.05, blue: 0.07, alpha: 0.5) : ground
+                                var fillColor: CGColor = glassOn ? NSColor.clear.cgColor : ground
                                 if glassOn, lightGlass {
                                     // ライト＋すりガラス：本体と同じ暗めのガラス色
                                     fillColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
