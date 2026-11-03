@@ -119,6 +119,8 @@ struct ContentView: View {
         Group {
             if model.dropMode { dropModeBody } else { fullBody }
         }
+        // 透明度で色の求め方が変わるので、値が動いたら描き直す（SwiftUI は動的な色を自分では再計算しない）
+        .id(Int((model.glass * 40).rounded()))
         .foregroundColor(V.text)
         .background(VWindowStyler(theme: model.theme, glass: model.glass))
         // ドロップモードの切り替えと歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
@@ -129,6 +131,16 @@ struct ContentView: View {
             }
             .padding(.trailing, 4)
             .ignoresSafeArea(.container, edges: .top)
+        }
+        .overlay(alignment: .top) {
+            if model.glass > VNS.lightGlassOn {
+                Text("SabunCopy")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(V.text)
+                    .frame(height: 28)
+                    .allowsHitTesting(false)
+                    .ignoresSafeArea(.container, edges: .top)
+            }
         }
         .onAppear { model.applyWindowLevel() }
         .sheet(item: $model.pending) { req in

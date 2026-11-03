@@ -33,6 +33,17 @@ enum VNS {
             return base.withAlphaComponent(CGFloat(1 - k * CopyModel.shared.glass))
         }
     }
+    /// ライトでも、すりガラスが一定以上のときは文字を白にする（暗めのガラスに白文字）
+    static let lightGlassOn = 0.3
+    static func inkAdaptive(dark: UInt32, light: UInt32, whiteAlpha: CGFloat) -> NSColor {
+        NSColor(name: nil) { appearance in
+            if appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua {
+                if CopyModel.shared.glass > lightGlassOn { return NSColor.white.withAlphaComponent(whiteAlpha) }
+                return ns(light)
+            }
+            return ns(dark)
+        }
+    }
     static let ground = dyn(0x121519, 0xe9edf2)
 }
 
@@ -49,8 +60,8 @@ enum V {
     static let blueTint = Color(nsColor: VNS.dyn(0x6a99cc, 0x2f67a8))   // brand-blue-tint
     static let onBrand = Color(hex: 0xffffff)
     static let barMuted = Color(nsColor: VNS.dyn(0x383836, 0xb8c0ca))
-    static let text = Color(nsColor: VNS.dyn(0xffffff, 0x1b2027))       // text-primary
-    static let muted = Color(nsColor: VNS.dyn(0x9ea19b, 0x5b6470))      // text-muted
+    static let text = Color(nsColor: VNS.inkAdaptive(dark: 0xffffff, light: 0x1b2027, whiteAlpha: 1))       // text-primary
+    static let muted = Color(nsColor: VNS.inkAdaptive(dark: 0x9ea19b, light: 0x5b6470, whiteAlpha: 0.72))      // text-muted
     static let light = Color(hex: 0xffffff)      // button-light
     /// スライドトグルのつまみ。真っ白よりひと段やわらかい白
     static let thumb = Color(nsColor: VNS.dyn(0xe4e9f0, 0xffffff))
@@ -522,10 +533,11 @@ struct VWindowStyler: NSViewRepresentable {
         deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
 
         private func apply(to window: NSWindow) {
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .visible       // ツールバーが無ければ、タイトルは中央に出る
-            window.titlebarSeparatorStyle = .none
             let glass = CopyModel.shared.glass
+            window.titlebarAppearsTransparent = true
+            // すりガラスのときは、同じ見た目の SwiftUI のタイトルを重ねる（白文字にできるように）
+            window.titleVisibility = glass > VNS.lightGlassOn ? .hidden : .visible
+            window.titlebarSeparatorStyle = .none
             window.isOpaque = glass <= 0.001
             window.backgroundColor = glass <= 0.001 ? VNS.ground : NSColor.clear
             // 大きさは固定（最小サイズのまま）
@@ -560,8 +572,7 @@ struct VWindowStyler: NSViewRepresentable {
                 frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
                 return v
             }()
-            // ぼかした層の濃さ。下げるほど、背後がぼけずにそのまま透ける
-            blur.alphaValue = CGFloat(1 - 0.5 * glass)
+            blur.alphaValue = 1
             let overlay = tint ?? {
                 let v = NSView(frame: frame.bounds)
                 v.identifier = tintID
@@ -573,7 +584,13 @@ struct VWindowStyler: NSViewRepresentable {
             var base = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
             // 透明度を上げるほどベース色が薄くなる（最大では素材だけにする）
-            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - glass))
+            let isLight = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
+            if isLight && glass > VNS.lightGlassOn {
+                // ライトは白文字にするので、ベースを暗めのガラスにする
+                overlay.layer?.backgroundColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
+            } else {
+                overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - glass))
+            }
         }
 
         /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
@@ -585,6 +602,8 @@ struct VWindowStyler: NSViewRepresentable {
             var ground = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { ground = VNS.ground.cgColor }
             let glassOn = CopyModel.shared.glass > 0.001
+            let lightGlass = CopyModel.shared.glass > VNS.lightGlassOn
+                && window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
             for container in frame.subviews where name(container) == "NSTitlebarContainerView" {
                 // タイトルバーの背景（塗り・ぼかし素材）。すりガラスのときは透明にして、ウインドウ全体と同じ透け方にする
                 func walk(_ view: NSView) {
@@ -595,7 +614,12 @@ struct VWindowStyler: NSViewRepresentable {
                                 sub.isHidden = glassOn
                             } else if n == "NSView" {
                                 sub.wantsLayer = true
-                                sub.layer?.backgroundColor = glassOn ? NSColor.clear.cgColor : ground
+                                var fillColor: CGColor = glassOn ? NSColor.clear.cgColor : ground
+                                if glassOn, lightGlass {
+                                    // ライト＋すりガラス：本体と同じ暗めのガラス色
+                                    fillColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
+                                }
+                                sub.layer?.backgroundColor = fillColor
                             }
                             if n == "NSTitlebarView" { walk(sub) }
                         }
