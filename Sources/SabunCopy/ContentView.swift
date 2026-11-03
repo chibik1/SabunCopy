@@ -120,7 +120,7 @@ struct ContentView: View {
             if model.dropMode { dropModeBody } else { fullBody }
         }
         .foregroundColor(V.text)
-        .background(VWindowStyler(theme: model.theme))
+        .background(VWindowStyler(theme: model.theme, glass: model.glass))
         // ドロップモードの切り替えと歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 0) {
@@ -588,6 +588,16 @@ struct OptionsPopover: View {
             VPillSegmented(options: ThemeChoice.allCases,
                            selection: $model.theme,
                            label: { $0.label })
+
+            HStack(spacing: 8) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 12))
+                    .foregroundColor(V.muted)
+                    .help("すりガラス")
+                Slider(value: $model.glass, in: 0...1)
+                    .controlSize(.small)
+                    .tint(V.blue)
+            }
 
             Toggle(isOn: Binding(
                 get: { model.verify || model.operation == .move },

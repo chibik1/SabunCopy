@@ -482,6 +482,7 @@ struct VSheet<Content: View>: View {
 struct VWindowStyler: NSViewRepresentable {
     /// テーマが変わったときに当て直すための値（中身は使わない）
     var theme: ThemeChoice = .dark
+    var glass: Double = 0
 
     func makeNSView(context: Context) -> NSView { StylerView() }
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -517,13 +518,54 @@ struct VWindowStyler: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .visible       // ツールバーが無ければ、タイトルは中央に出る
             window.titlebarSeparatorStyle = .none
-            window.backgroundColor = VNS.ground
+            let glass = CopyModel.shared.glass
+            window.isOpaque = glass <= 0.001
+            window.backgroundColor = glass <= 0.001 ? VNS.ground : NSColor.clear
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)
             window.standardWindowButton(.zoomButton)?.isEnabled = false
             // 画面をタイトルバーの下まで広げる（歯車をタイトルバーの高さに重ねるため）
             window.styleMask.insert(.fullSizeContentView)
             paintTitlebar(window)
+            applyGlass(window, glass: glass)
+        }
+
+        /// すりガラス：ウインドウの背後をぼかす素材と、その上に薄く重ねるベース色。
+        /// glass = 0 なら何も置かず、従来どおり不透明のベース色にする。
+        private func applyGlass(_ window: NSWindow, glass: Double) {
+            guard let frame = window.contentView?.superview else { return }
+            let effectID = NSUserInterfaceItemIdentifier("sabun.glass.effect")
+            let tintID = NSUserInterfaceItemIdentifier("sabun.glass.tint")
+            let effect = frame.subviews.first { $0.identifier == effectID } as? NSVisualEffectView
+            let tint = frame.subviews.first { $0.identifier == tintID }
+            if glass <= 0.001 {
+                effect?.removeFromSuperview()
+                tint?.removeFromSuperview()
+                return
+            }
+            let blur = effect ?? {
+                let v = NSVisualEffectView(frame: frame.bounds)
+                v.identifier = effectID
+                v.autoresizingMask = [.width, .height]
+                v.blendingMode = .behindWindow
+                v.material = .underWindowBackground
+                v.state = .active
+                frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
+                return v
+            }()
+            _ = blur
+            let overlay = tint ?? {
+                let v = NSView(frame: frame.bounds)
+                v.identifier = tintID
+                v.autoresizingMask = [.width, .height]
+                v.wantsLayer = true
+                frame.addSubview(v, positioned: .above, relativeTo: blur)
+                return v
+            }()
+            var base = VNS.ground.cgColor
+            window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
+            // 透明度を上げるほどベース色が薄くなる（いちばん透けても 35% は残して文字を読みやすくする）
+            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - 0.65 * glass))
         }
 
         /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
@@ -538,7 +580,7 @@ struct VWindowStyler: NSViewRepresentable {
                 for bar in container.subviews where name(bar) == "NSTitlebarView" {
                     for fill in bar.subviews where name(fill) == "NSView" {
                         fill.wantsLayer = true
-                        fill.layer?.backgroundColor = ground
+                        fill.layer?.backgroundColor = CopyModel.shared.glass > 0.001 ? NSColor.clear.cgColor : ground
                     }
                 }
             }
