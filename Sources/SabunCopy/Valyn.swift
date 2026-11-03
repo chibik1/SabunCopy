@@ -16,9 +16,9 @@ extension Color {
 
 enum V {
     // Color
-    static let ground = Color(hex: 0x12170f)     // surface-ground
-    static let row = Color(hex: 0x1b2018)        // surface-row
-    static let chip = Color(hex: 0x262d24)       // surface-chip
+    static let ground = Color(hex: 0x121519)     // surface-ground
+    static let row = Color(hex: 0x1b1f25)        // surface-row
+    static let chip = Color(hex: 0x262b32)       // surface-chip
     static let blue = Color(hex: 0x4079bc)       // brand-blue
     /// 青いパーツ共通のごく薄いグラデーション（上がわずかに明るい）
     static let blueFill = LinearGradient(
@@ -300,7 +300,7 @@ struct VSlideToggle: View {
                 .overlay(
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        Rectangle().fill(Color(hex: 0x12170f).opacity(0.2)).frame(height: 2)
+                        Rectangle().fill(Color(hex: 0x121519).opacity(0.2)).frame(height: 2)
                     }
                     .clipShape(Capsule())
                     .allowsHitTesting(false)
@@ -492,7 +492,7 @@ struct VWindowStyler: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .visible       // ツールバーが無ければ、タイトルは中央に出る
             window.titlebarSeparatorStyle = .none
-            window.backgroundColor = NSColor(srgbRed: 18.0 / 255, green: 23.0 / 255, blue: 15.0 / 255, alpha: 1)
+            window.backgroundColor = NSColor(srgbRed: 18.0 / 255, green: 21.0 / 255, blue: 25.0 / 255, alpha: 1)
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)
             window.standardWindowButton(.zoomButton)?.isEnabled = false
@@ -507,7 +507,7 @@ struct VWindowStyler: NSViewRepresentable {
         private func paintTitlebar(_ window: NSWindow) {
             func name(_ view: NSView) -> String { String(describing: type(of: view)) }
             guard let frame = window.contentView?.superview else { return }
-            let ground = NSColor(srgbRed: 18.0 / 255, green: 23.0 / 255, blue: 15.0 / 255, alpha: 1)
+            let ground = NSColor(srgbRed: 18.0 / 255, green: 21.0 / 255, blue: 25.0 / 255, alpha: 1)
             for container in frame.subviews where name(container) == "NSTitlebarContainerView" {
                 for bar in container.subviews where name(bar) == "NSTitlebarView" {
                     for fill in bar.subviews where name(fill) == "NSView" {
