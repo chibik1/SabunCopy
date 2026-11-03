@@ -572,7 +572,7 @@ struct VWindowStyler: NSViewRepresentable {
                 frame.addSubview(v, positioned: .below, relativeTo: nil)   // いちばん奥（タイトルバーの信号ボタンより後ろ）
                 return v
             }()
-            blur.alphaValue = 1
+            blur.alphaValue = CGFloat(CopyModel.shared.blur)
             let overlay = tint ?? {
                 let v = NSView(frame: frame.bounds)
                 v.identifier = tintID
@@ -589,7 +589,7 @@ struct VWindowStyler: NSViewRepresentable {
                 // ライトは白文字にするので、ベースを暗めのガラスにする
                 overlay.layer?.backgroundColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
             } else {
-                overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - glass))
+                overlay.layer?.backgroundColor = base.copy(alpha: 0.2)
             }
         }
 

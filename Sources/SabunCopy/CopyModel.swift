@@ -7,7 +7,7 @@ private enum DefaultsKey {
     static let verify = "verifyAfterCopy"
     static let alwaysOnTop = "alwaysOnTop"
     static let theme = "theme"
-    static let glass = "glass"
+    static let blur = "blur"
     static let recents = "recentDestinations"
     static let favorites = "favoriteDestinations"
 }
@@ -116,9 +116,10 @@ final class CopyModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoCloseWhenDone, forKey: DefaultsKey.autoClose) }
     }
     @Published var showOptions = false
-    /// すりガラスの強さ 0…1（0 = 不透明）
-    @Published var glass: Double {
-        didSet { UserDefaults.standard.set(glass, forKey: DefaultsKey.glass) }
+    /// 背景はつねにすりガラス（透け方は固定）。ぼかし具合は 0…1（0 = ぼかさずそのまま透ける）
+    let glass: Double = 1
+    @Published var blur: Double {
+        didSet { UserDefaults.standard.set(blur, forKey: DefaultsKey.blur) }
     }
     @Published var theme: ThemeChoice {
         didSet {
@@ -160,7 +161,7 @@ final class CopyModel: ObservableObject {
         verify = d.bool(forKey: DefaultsKey.verify)
         alwaysOnTop = d.bool(forKey: DefaultsKey.alwaysOnTop)
         autoCloseWhenDone = d.bool(forKey: DefaultsKey.autoClose)
-        glass = min(1, max(0, d.double(forKey: DefaultsKey.glass)))
+        blur = d.object(forKey: DefaultsKey.blur) == nil ? 0.8 : min(1, max(0, d.double(forKey: DefaultsKey.blur)))
         theme = ThemeChoice(rawValue: d.string(forKey: DefaultsKey.theme) ?? "") ?? .dark
         recentFolders = (d.stringArray(forKey: DefaultsKey.recents) ?? []).map { URL(fileURLWithPath: $0) }
         favoriteFolders = (d.stringArray(forKey: DefaultsKey.favorites) ?? []).map { URL(fileURLWithPath: $0) }

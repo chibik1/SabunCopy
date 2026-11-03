@@ -119,10 +119,8 @@ struct ContentView: View {
         Group {
             if model.dropMode { dropModeBody } else { fullBody }
         }
-        // 透明度で色の求め方が変わるので、値が動いたら描き直す（SwiftUI は動的な色を自分では再計算しない）
-        .id(Int((model.glass * 40).rounded()))
         .foregroundColor(V.text)
-        .background(VWindowStyler(theme: model.theme, glass: model.glass))
+        .background(VWindowStyler(theme: model.theme, glass: model.blur))
         // ドロップモードの切り替えと歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 0) {
@@ -603,11 +601,11 @@ struct OptionsPopover: View {
                            label: { $0.label })
 
             HStack(spacing: 8) {
-                Image(systemName: "circle.lefthalf.filled")
+                Image(systemName: "drop")
                     .font(.system(size: 12))
                     .foregroundColor(V.muted)
-                    .help("すりガラス")
-                Slider(value: $model.glass, in: 0...1)
+                    .help("ぼかし")
+                Slider(value: $model.blur, in: 0...1)
                     .controlSize(.small)
                     .tint(V.blue)
             }
