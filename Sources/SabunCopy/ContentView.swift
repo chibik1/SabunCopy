@@ -132,14 +132,12 @@ struct ContentView: View {
             .ignoresSafeArea(.container, edges: .top)
         }
         .overlay(alignment: .top) {
-            do {
-                Text("SabunCopy")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(V.text)
-                    .frame(height: 28)
-                    .allowsHitTesting(false)
-                    .ignoresSafeArea(.container, edges: .top)
-            }
+            Text("SabunCopy")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(V.text)
+                .frame(height: 28)
+                .allowsHitTesting(false)
+                .ignoresSafeArea(.container, edges: .top)
         }
         .onAppear { model.applyWindowLevel() }
         .sheet(item: $model.pending) { req in
@@ -597,10 +595,6 @@ struct OptionsPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: V.s3) {
-            VPillSegmented(options: ThemeChoice.allCases,
-                           selection: $model.theme,
-                           label: { $0.label })
-
             HStack(spacing: 8) {
                 Image(systemName: "drop")
                     .font(.system(size: 12))

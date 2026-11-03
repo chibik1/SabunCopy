@@ -556,7 +556,6 @@ struct VWindowStyler: NSViewRepresentable {
 /// ウインドウの背景を素材に替える。ぼかし具合は素材の厚み（ultraThin … ultraThick）で段階的に変える。
 struct VGlassBackground: ViewModifier {
     var blur: Double
-    @Environment(\.colorScheme) private var scheme
 
     private var material: Material {
         switch Int((blur * 4).rounded()) {
@@ -572,13 +571,8 @@ struct VGlassBackground: ViewModifier {
         if #available(macOS 15.0, *) {
             content
                 .containerBackground(for: .window) {
-                    ZStack {
-                        Rectangle().fill(material)
-                        // ライトは白文字にするので、暗めのガラス色を重ねる
-                        if scheme == .light {
-                            Color(red: 0.13, green: 0.15, blue: 0.19).opacity(0.62)
-                        }
-                    }
+                    // ウインドウのフォーカスが外れても、素材の見た目（不透明度）を変えない
+                    Rectangle().fill(material.materialActiveAppearance(.active))
                 }
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         } else {

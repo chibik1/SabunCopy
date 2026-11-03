@@ -6,7 +6,6 @@ private enum DefaultsKey {
     static let autoClose = "autoCloseWhenDone"
     static let verify = "verifyAfterCopy"
     static let alwaysOnTop = "alwaysOnTop"
-    static let theme = "theme"
     static let blur = "blur"
     static let recents = "recentDestinations"
     static let favorites = "favoriteDestinations"
@@ -36,28 +35,6 @@ struct PreviewResult: Identifiable {
 
     func count(_ outcome: PreviewOutcome) -> Int {
         rows.filter { $0.outcome == outcome }.count
-    }
-}
-
-/// 外観（ダーク／ライト／システムに合わせる）
-enum ThemeChoice: String, CaseIterable, Identifiable {
-    case dark, light, system
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .dark: return L("ダーク")
-        case .light: return L("ライト")
-        case .system: return L("自動")
-        }
-    }
-
-    var appearance: NSAppearance? {
-        switch self {
-        case .dark: return NSAppearance(named: .darkAqua)
-        case .light: return NSAppearance(named: .aqua)
-        case .system: return nil
-        }
     }
 }
 
@@ -121,12 +98,6 @@ final class CopyModel: ObservableObject {
     @Published var blur: Double {
         didSet { UserDefaults.standard.set(blur, forKey: DefaultsKey.blur) }
     }
-    @Published var theme: ThemeChoice {
-        didSet {
-            UserDefaults.standard.set(theme.rawValue, forKey: DefaultsKey.theme)
-            applyAppearance()
-        }
-    }
     /// ドロップモード：コピー元のドロップ欄だけの小さな最前面ウインドウ（保存しない）
     @Published var dropMode = false {
         didSet { applyWindowLevel() }
@@ -162,7 +133,6 @@ final class CopyModel: ObservableObject {
         alwaysOnTop = d.bool(forKey: DefaultsKey.alwaysOnTop)
         autoCloseWhenDone = d.bool(forKey: DefaultsKey.autoClose)
         blur = d.object(forKey: DefaultsKey.blur) == nil ? 0.8 : min(1, max(0, d.double(forKey: DefaultsKey.blur)))
-        theme = ThemeChoice(rawValue: d.string(forKey: DefaultsKey.theme) ?? "") ?? .dark
         recentFolders = (d.stringArray(forKey: DefaultsKey.recents) ?? []).map { URL(fileURLWithPath: $0) }
         favoriteFolders = (d.stringArray(forKey: DefaultsKey.favorites) ?? []).map { URL(fileURLWithPath: $0) }
     }
@@ -178,9 +148,9 @@ final class CopyModel: ObservableObject {
 
     // MARK: Window
 
-    /// 外観（ダーク／ライト／自動）をアプリ全体に反映する
+    /// 外観はダークに固定する
     func applyAppearance() {
-        NSApp.appearance = theme.appearance
+        NSApp.appearance = NSAppearance(named: .darkAqua)
     }
 
     /// 「最前面に固定」をウインドウに反映する

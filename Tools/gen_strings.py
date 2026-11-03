@@ -17,7 +17,7 @@ EN = {
  "更新日時": "Date", "サイズ": "Size",
  "新しい": "Newer", "古い": "Older", "大きい": "Larger", "小さい": "Smaller",
  "残す": "Keep",
- "ぼかし": "Blur", "ダーク": "Dark", "ライト": "Light", "自動": "Auto",
+ "ぼかし": "Blur",
  "%ld 項目": "%ld items", "ドロップモード": "Drop mode", "通常の表示に戻す": "Back to normal view",
  "置き換え": "Replace", "ゴミ箱へ": "To Trash",
  "置き換え：コピー先にしかないためゴミ箱へ: %@": "Replace: moved to Trash (only in destination): %@",
