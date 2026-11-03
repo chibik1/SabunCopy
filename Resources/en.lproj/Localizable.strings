@@ -1,6 +1,7 @@
 /* UI strings (key = Japanese source) */
 "%@：%ld ファイル（%@）" = "%@: %ld files (%@)";
 "%ld ファイル" = "%ld files";
+"%ld 項目" = "%ld items";
 "「%@」の中にはコピーできません（コピー先がコピー元の内側です）" = "Can’t copy “%@” into itself (the destination is inside the source).";
 "「%@」はコピー元とコピー先が同じ場所です" = "“%@” has the same source and destination.";
 "お気に入り" = "Favorites";
@@ -44,10 +45,13 @@
 "スキップ（コピー先を残す）: %@" = "Skipped (kept destination): %@";
 "スキップ（比較では同一でも内容が異なるため移動元を残しました）: %@" = "Skipped (same by comparison, but contents differ; source kept): %@";
 "スキップ（移動元は残します）: %@" = "Skipped (source kept): %@";
+"ダーク" = "Dark";
+"ドロップモード" = "Drop mode";
 "ハッシュ照合" = "Verify with hash";
 "フォルダの中身を読み取れません: %@" = "Can’t read the contents of folder: %@";
 "フォルダを作成できません: %@ — %@" = "Couldn’t create folder: %@ — %@";
 "フォルダを選ぶ…" = "Choose folder…";
+"ライト" = "Light";
 "上書き" = "Overwrite";
 "上書き %ld" = "Overwritten %ld";
 "上書き: %@" = "Overwritten: %@";
@@ -105,9 +109,11 @@
 "置き換え" = "Replace";
 "置き換えでゴミ箱へ %ld" = "Replaced → Trash %ld";
 "置き換え：コピー先にしかないためゴミ箱へ: %@" = "Replace: moved to Trash (only in destination): %@";
+"自動" = "Auto";
 "設定" = "Settings";
 "読み取れません: %@ — %@" = "Can’t read: %@ — %@";
 "追加…" = "Add…";
+"通常の表示に戻す" = "Back to normal view";
 "閉じる" = "Close";
 "開始できませんでした: %@" = "Couldn’t start: %@";
 "（まだありません。★で追加できます）" = "(None yet. Add with ★)";

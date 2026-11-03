@@ -6,6 +6,7 @@ private enum DefaultsKey {
     static let autoClose = "autoCloseWhenDone"
     static let verify = "verifyAfterCopy"
     static let alwaysOnTop = "alwaysOnTop"
+    static let theme = "theme"
     static let recents = "recentDestinations"
     static let favorites = "favoriteDestinations"
 }
@@ -37,9 +38,31 @@ struct PreviewResult: Identifiable {
     }
 }
 
+/// 外観（ダーク／ライト／システムに合わせる）
+enum ThemeChoice: String, CaseIterable, Identifiable {
+    case dark, light, system
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .dark: return L("ダーク")
+        case .light: return L("ライト")
+        case .system: return L("自動")
+        }
+    }
+
+    var appearance: NSAppearance? {
+        switch self {
+        case .dark: return NSAppearance(named: .darkAqua)
+        case .light: return NSAppearance(named: .aqua)
+        case .system: return nil
+        }
+    }
+}
+
 /// 比較が空欄のときの処理（同名ファイルの扱い）
 enum PolicyChoice: String, CaseIterable, Identifiable {
-    case ask, overwrite, replace, skip, keepBoth
+    case ask, skip, overwrite, replace, keepBoth
     var id: String { rawValue }
 
     var label: String {
@@ -92,6 +115,16 @@ final class CopyModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoCloseWhenDone, forKey: DefaultsKey.autoClose) }
     }
     @Published var showOptions = false
+    @Published var theme: ThemeChoice {
+        didSet {
+            UserDefaults.standard.set(theme.rawValue, forKey: DefaultsKey.theme)
+            applyAppearance()
+        }
+    }
+    /// ドロップモード：コピー元のドロップ欄だけの小さな最前面ウインドウ（保存しない）
+    @Published var dropMode = false {
+        didSet { applyWindowLevel() }
+    }
 
     /// コピー先の履歴とお気に入り（次回起動時も保持）
     @Published private(set) var recentFolders: [URL]
@@ -122,6 +155,7 @@ final class CopyModel: ObservableObject {
         verify = d.bool(forKey: DefaultsKey.verify)
         alwaysOnTop = d.bool(forKey: DefaultsKey.alwaysOnTop)
         autoCloseWhenDone = d.bool(forKey: DefaultsKey.autoClose)
+        theme = ThemeChoice(rawValue: d.string(forKey: DefaultsKey.theme) ?? "") ?? .dark
         recentFolders = (d.stringArray(forKey: DefaultsKey.recents) ?? []).map { URL(fileURLWithPath: $0) }
         favoriteFolders = (d.stringArray(forKey: DefaultsKey.favorites) ?? []).map { URL(fileURLWithPath: $0) }
     }
@@ -137,9 +171,14 @@ final class CopyModel: ObservableObject {
 
     // MARK: Window
 
+    /// 外観（ダーク／ライト／自動）をアプリ全体に反映する
+    func applyAppearance() {
+        NSApp.appearance = theme.appearance
+    }
+
     /// 「最前面に固定」をウインドウに反映する
     func applyWindowLevel() {
-        let level: NSWindow.Level = alwaysOnTop ? .floating : .normal
+        let level: NSWindow.Level = (alwaysOnTop || dropMode) ? .floating : .normal
         for window in NSApp.windows where window.canBecomeMain {
             window.level = level
         }

@@ -14,26 +14,45 @@ extension Color {
     }
 }
 
+/// ダーク／ライトで色が切り替わる動的な色
+enum VNS {
+    private static func ns(_ hex: UInt32) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255,
+                green: CGFloat((hex >> 8) & 0xff) / 255,
+                blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+    }
+    static func dyn(_ dark: UInt32, _ light: UInt32) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? ns(light) : ns(dark)
+        }
+    }
+    static let ground = dyn(0x121519, 0xe9edf2)
+}
+
 enum V {
-    // Color
-    static let ground = Color(hex: 0x121519)     // surface-ground
-    static let row = Color(hex: 0x1b1f25)        // surface-row
-    static let chip = Color(hex: 0x262b32)       // surface-chip
+    // Color（左がダーク、右がライト）
+    static let ground = Color(nsColor: VNS.ground)     // surface-ground
+    static let row = Color(nsColor: VNS.dyn(0x1b1f25, 0xf7f9fb))        // surface-row
+    static let chip = Color(nsColor: VNS.dyn(0x262b32, 0xdce2ea))       // surface-chip
     static let blue = Color(hex: 0x4079bc)       // brand-blue
     /// 青いパーツ共通のごく薄いグラデーション（上がわずかに明るい）
     static let blueFill = LinearGradient(
         colors: [Color(hex: 0x4a84c8), Color(hex: 0x3a72b2)],
         startPoint: .top, endPoint: .bottom)
-    static let blueTint = Color(hex: 0x6a99cc)   // brand-blue-tint
+    static let blueTint = Color(nsColor: VNS.dyn(0x6a99cc, 0x2f67a8))   // brand-blue-tint
     static let onBrand = Color(hex: 0xffffff)
-    static let barMuted = Color(hex: 0x383836)
-    static let text = Color(hex: 0xffffff)       // text-primary
-    static let muted = Color(hex: 0x9ea19b)      // text-muted
+    static let barMuted = Color(nsColor: VNS.dyn(0x383836, 0xb8c0ca))
+    static let text = Color(nsColor: VNS.dyn(0xffffff, 0x1b2027))       // text-primary
+    static let muted = Color(nsColor: VNS.dyn(0x9ea19b, 0x5b6470))      // text-muted
     static let light = Color(hex: 0xffffff)      // button-light
     /// スライドトグルのつまみ。真っ白よりひと段やわらかい白
-    static let thumb = Color(hex: 0xe4e9f0)
+    static let thumb = Color(nsColor: VNS.dyn(0xe4e9f0, 0xffffff))
+    /// つまみの上の文字（どちらのテーマでも濃い色）
+    static let thumbInk = Color(hex: 0x121519)
+    /// 押したときに重ねる色（ダークは白、ライトは黒）
+    static let press = Color(nsColor: VNS.dyn(0xffffff, 0x000000))
     /// Valyn に定義が無いので、エラー表示だけに使う控えめな赤
-    static let danger = Color(hex: 0xff6e70)
+    static let danger = Color(nsColor: VNS.dyn(0xff6e70, 0xd62f3b))
 
     // Radius
     static let rSm: CGFloat = 8
@@ -104,7 +123,7 @@ struct VChipStyle: ButtonStyle {
         return configuration.label
             .frame(width: width, height: height)
             .background(shape.fill(V.chip))
-            .overlay(shape.fill(Color.white.opacity(configuration.isPressed ? 0.08 : 0)))
+            .overlay(shape.fill(V.press.opacity(configuration.isPressed ? 0.08 : 0)))
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(shape)
     }
@@ -124,7 +143,7 @@ struct VSheetButtonStyle: ButtonStyle {
             .padding(.horizontal, primary ? 18 : 14)
             .frame(height: 34)
             .background(shape.fill(primary ? AnyShapeStyle(V.blueFill) : AnyShapeStyle(V.chip)))
-            .overlay(shape.fill(Color.white.opacity(configuration.isPressed ? 0.10 : 0)))
+            .overlay(shape.fill(V.press.opacity(configuration.isPressed ? 0.10 : 0)))
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(shape)
     }
@@ -300,7 +319,7 @@ struct VSlideToggle: View {
                 .overlay(
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        Rectangle().fill(Color(hex: 0x121519).opacity(0.2)).frame(height: 2)
+                        Rectangle().fill(Color.black.opacity(0.18)).frame(height: 2)
                     }
                     .clipShape(Capsule())
                     .allowsHitTesting(false)
@@ -317,7 +336,7 @@ struct VSlideToggle: View {
                     } label: {
                         Text(mode.label)
                             .font(VFont.ui(14, .bold))
-                            .foregroundColor(selection == mode ? V.ground : V.onBrand)
+                            .foregroundColor(selection == mode ? V.thumbInk : V.onBrand)
                             .frame(width: segment, height: height - inset * 2)
                             .contentShape(Capsule())
                     }
@@ -461,8 +480,14 @@ struct VSheet<Content: View>: View {
 
 /// ウインドウのタイトルバーを surface-ground に溶け込ませる
 struct VWindowStyler: NSViewRepresentable {
+    /// テーマが変わったときに当て直すための値（中身は使わない）
+    var theme: ThemeChoice = .dark
+
     func makeNSView(context: Context) -> NSView { StylerView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // 外観の切り替えが済んでから、タイトルバーの塗りを当て直す
+        DispatchQueue.main.async { (nsView as? StylerView)?.reapply() }
+    }
 
     final class StylerView: NSView {
         private var observers: [NSObjectProtocol] = []
@@ -484,15 +509,15 @@ struct VWindowStyler: NSViewRepresentable {
             }
         }
 
+        func reapply() { if let window = window { apply(to: window) } }
+
         deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
 
         private func apply(to window: NSWindow) {
-            // ダーク外観にして、タイトルとツールバーの文字・アイコンを白にする
-            window.appearance = NSAppearance(named: .darkAqua)
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .visible       // ツールバーが無ければ、タイトルは中央に出る
             window.titlebarSeparatorStyle = .none
-            window.backgroundColor = NSColor(srgbRed: 18.0 / 255, green: 21.0 / 255, blue: 25.0 / 255, alpha: 1)
+            window.backgroundColor = VNS.ground
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)
             window.standardWindowButton(.zoomButton)?.isEnabled = false
@@ -507,12 +532,13 @@ struct VWindowStyler: NSViewRepresentable {
         private func paintTitlebar(_ window: NSWindow) {
             func name(_ view: NSView) -> String { String(describing: type(of: view)) }
             guard let frame = window.contentView?.superview else { return }
-            let ground = NSColor(srgbRed: 18.0 / 255, green: 21.0 / 255, blue: 25.0 / 255, alpha: 1)
+            var ground = VNS.ground.cgColor
+            window.effectiveAppearance.performAsCurrentDrawingAppearance { ground = VNS.ground.cgColor }
             for container in frame.subviews where name(container) == "NSTitlebarContainerView" {
                 for bar in container.subviews where name(bar) == "NSTitlebarView" {
                     for fill in bar.subviews where name(fill) == "NSView" {
                         fill.wantsLayer = true
-                        fill.layer?.backgroundColor = ground.cgColor
+                        fill.layer?.backgroundColor = ground
                     }
                 }
             }

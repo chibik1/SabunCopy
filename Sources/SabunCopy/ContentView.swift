@@ -88,7 +88,7 @@ private extension LogKind {
 struct ContentView: View {
     @ObservedObject private var model = CopyModel.shared
 
-    var body: some View {
+    private var fullBody: some View {
         VStack(spacing: V.s2) {
             sourceRow
             destinationRow
@@ -113,13 +113,22 @@ struct ContentView: View {
         .padding(.bottom, V.s3)
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    var body: some View {
+        Group {
+            if model.dropMode { dropModeBody } else { fullBody }
+        }
         .foregroundColor(V.text)
-        .background(VWindowStyler())
-        // 歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
+        .background(VWindowStyler(theme: model.theme))
+        // ドロップモードの切り替えと歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
         .overlay(alignment: .topTrailing) {
-            GearButton()
-                .padding(.trailing, 4)
-                .ignoresSafeArea(.container, edges: .top)
+            HStack(spacing: 0) {
+                DropModeButton()
+                if !model.dropMode { GearButton() }
+            }
+            .padding(.trailing, 4)
+            .ignoresSafeArea(.container, edges: .top)
         }
         .onAppear { model.applyWindowLevel() }
         .sheet(item: $model.pending) { req in
@@ -128,6 +137,46 @@ struct ContentView: View {
             }
             .interactiveDismissDisabled()
         }
+    }
+
+    // MARK: Drop mode
+
+    /// コピー元をドロップするだけの小さな表示
+    private var dropModeBody: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: V.rSm, style: .continuous)
+                .strokeBorder(model.srcTargeted ? V.blue : V.barMuted,
+                              style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+            VStack(spacing: 6) {
+                Image(systemName: model.sources.isEmpty ? "square.and.arrow.down" : "tray.full")
+                    .font(.system(size: 20))
+                    .foregroundColor(model.sources.isEmpty ? V.muted : V.blueTint)
+                Text(model.sources.isEmpty ? L("コピー元をドロップ") : L("%ld 項目", model.sources.count))
+                    .font(VFont.ui(12, model.sources.isEmpty ? .regular : .medium))
+                    .foregroundColor(model.sources.isEmpty ? V.muted : V.text)
+            }
+            if !model.sources.isEmpty {
+                Button {
+                    model.clearSources()
+                } label: {
+                    Image(systemName: "trash").font(.system(size: 12))
+                }
+                .buttonStyle(VChipStyle(width: 24, height: 24))
+                .help("クリア")
+                .padding(6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+        .frame(width: 236, height: 84)
+        .padding(.horizontal, V.s3)
+        .padding(.top, V.s2)
+        .padding(.bottom, V.s3)
+        .dropDestination(for: URL.self) { urls, _ in
+            model.addSources(urls)
+            return true
+        } isTargeted: { model.srcTargeted = $0 }
+        .fixedSize()
+        .disabled(model.busy)
     }
 
     // MARK: Source
@@ -490,6 +539,26 @@ struct ContentView: View {
 // MARK: - Gear（タイトルバー右端）
 
 /// 歯車のボタン。タイトルバーの右端に重ねる（ContentView の overlay）。
+struct DropModeButton: View {
+    @ObservedObject private var model = CopyModel.shared
+
+    var body: some View {
+        Button {
+            model.dropMode.toggle()
+        } label: {
+            Image(systemName: model.dropMode ? "arrow.up.left.and.arrow.down.right"
+                                             : "arrow.down.right.and.arrow.up.left")
+                .font(.system(size: 13))
+                .foregroundColor(V.text)
+                .frame(width: 36, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(model.dropMode ? "通常の表示に戻す" : "ドロップモード")
+        .disabled(model.busy)
+    }
+}
+
 struct GearButton: View {
     @ObservedObject private var model = CopyModel.shared
 
@@ -516,6 +585,10 @@ struct OptionsPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: V.s3) {
+            VPillSegmented(options: ThemeChoice.allCases,
+                           selection: $model.theme,
+                           label: { $0.label })
+
             Toggle(isOn: Binding(
                 get: { model.verify || model.operation == .move },
                 set: { model.verify = $0 }
