@@ -47,6 +47,7 @@ private extension PreviewOutcome {
         case .skip: return "chevron.right.circle"
         case .ask: return "questionmark.circle"
         case .keepBoth: return "doc.on.doc"
+        case .trash: return "trash"
         case .error: return "exclamationmark.triangle"
         }
     }
@@ -59,6 +60,7 @@ private extension PreviewOutcome {
         case .skip: return L("スキップ")
         case .ask: return L("確認")
         case .keepBoth: return L("両方残す")
+        case .trash: return L("ゴミ箱へ")
         case .error: return L("エラー")
         }
     }
@@ -557,7 +559,7 @@ struct PreviewSheet: View {
         case .changed:
             return result.rows.filter {
                 $0.outcome == .overwrite || $0.outcome == .ask
-                    || $0.outcome == .keepBoth || $0.outcome == .error
+                    || $0.outcome == .keepBoth || $0.outcome == .trash || $0.outcome == .error
             }
         case .skipped:
             return result.rows.filter { $0.outcome == .same || $0.outcome == .skip }
@@ -576,6 +578,7 @@ struct PreviewSheet: View {
                     pill(.overwrite)
                     pill(.ask)
                     pill(.keepBoth)
+                    if result.count(.trash) > 0 { pill(.trash) }
                     pill(.same)
                     pill(.skip)
                     if result.count(.error) > 0 { pill(.error) }

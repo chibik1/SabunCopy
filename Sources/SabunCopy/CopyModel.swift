@@ -39,13 +39,14 @@ struct PreviewResult: Identifiable {
 
 /// 比較が空欄のときの処理（同名ファイルの扱い）
 enum PolicyChoice: String, CaseIterable, Identifiable {
-    case ask, overwrite, skip, keepBoth
+    case ask, overwrite, replace, skip, keepBoth
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .ask: return L("確認")
         case .overwrite: return L("上書き")
+        case .replace: return L("置き換え")
         case .skip: return L("スキップ")
         case .keepBoth: return L("両方残す")
         }
@@ -55,7 +56,7 @@ enum PolicyChoice: String, CaseIterable, Identifiable {
     var action: ConflictAction? {
         switch self {
         case .ask: return nil
-        case .overwrite: return .overwrite
+        case .overwrite, .replace: return .overwrite
         case .skip: return .skip
         case .keepBoth: return .keepBoth
         }
@@ -130,7 +131,8 @@ final class CopyModel: ObservableObject {
                     compare: compare,
                     preferHigh: preferHigh,
                     verify: verify,
-                    initialPolicy: policy.action)
+                    initialPolicy: policy.action,
+                    replaceFolders: policy == .replace)
     }
 
     // MARK: Window
@@ -320,6 +322,7 @@ final class CopyModel: ObservableObject {
         if s.skipped > 0 { parts.append(L("スキップ %ld", s.skipped)) }
         if s.failed > 0 { parts.append(L("失敗 %ld", s.failed)) }
         if s.movedSources > 0 { parts.append(L("移動元をゴミ箱へ %ld", s.movedSources)) }
+        if s.replacedAway > 0 { parts.append(L("置き換えでゴミ箱へ %ld", s.replacedAway)) }
         if s.removedDirs > 0 { parts.append(L("空フォルダ整理 %ld", s.removedDirs)) }
         let body = parts.isEmpty ? L("処理したファイルはありません") : parts.joined(separator: " / ")
         summaryText = s.cancelled ? L("中止しました。 %@", body) : L("完了しました。 %@", body)

@@ -42,6 +42,8 @@ struct CopyOptions: Sendable {
     var verify = false
     /// compare が none のときの処理。nil = 毎回確認
     var initialPolicy: ConflictAction?
+    /// 置き換え：同名フォルダはコピー元と同じ中身にする（コピー先にしかないものはゴミ箱へ）
+    var replaceFolders = false
 }
 
 // MARK: - Types
@@ -90,6 +92,7 @@ struct CopySummary: Sendable {
     var failed = 0
     var movedSources = 0
     var removedDirs = 0
+    var replacedAway = 0
     var cancelled = false
     var fatalError: String?
 }
@@ -111,6 +114,7 @@ enum PreviewOutcome: Sendable {
     case skip       // スキップ（コピー先を残す／処理がスキップ）
     case ask        // 実行時に確認
     case keepBoth   // 別名で両方残す
+    case trash      // 置き換えで、コピー先にだけあるのでゴミ箱へ
     case error
 }
 
@@ -223,6 +227,30 @@ final class CopyEngine: @unchecked Sendable {
         return url.standardizedFileURL.path
     }
 
+    // MARK: Replace（置き換え）
+
+    /// 置き換えでゴミ箱へ送る、コピー先にだけある項目（フォルダはいちばん上のものだけ）
+    private func replaceOrphans(plan: [PlanItem]) -> [(url: URL, path: String)] {
+        let known = Set(plan.map { $0.relativePath })
+        var result: [(URL, String)] = []
+        for top in plan where top.isDirectory && !top.relativePath.contains("/") {
+            // コピー先がフォルダ（リンクでない）のときだけ
+            guard let type = (try? fm.attributesOfItem(atPath: top.destination.path))?[.type] as? FileAttributeType,
+                  type == .typeDirectory,
+                  let en = fm.enumerator(atPath: top.destination.path) else { continue }
+            for case let rel as String in en {
+                let label = top.relativePath + "/" + rel
+                let name = (rel as NSString).lastPathComponent
+                if known.contains(label) { continue }
+                if name == ".DS_Store" { continue }
+                if name.hasPrefix(".sabun-") && name.hasSuffix(".tmp") { continue }
+                en.skipDescendants()
+                result.append((top.destination.appendingPathComponent(rel), label))
+            }
+        }
+        return result
+    }
+
     // MARK: Decide（実行と差分プレビューで同じ判断を使う）
 
     /// 同名ファイルがあるときの判断
@@ -286,6 +314,11 @@ final class CopyEngine: @unchecked Sendable {
             rows.append(PreviewRow(path: item.relativePath, outcome: outcome, size: item.size))
         }
         progress(files.count, files.count)
+        if options.replaceFolders && options.compare == .none {
+            for o in replaceOrphans(plan: plan) {
+                rows.append(PreviewRow(path: o.path, outcome: .trash, size: 0))
+            }
+        }
         return rows
     }
 
@@ -354,6 +387,24 @@ final class CopyEngine: @unchecked Sendable {
             p.filesDone += 1
             p.bytesDone += item.size
             progress(p)
+        }
+
+        // 置き換え：コピー先にしかないものをゴミ箱へ（コピーが全部成功したときだけ）
+        if options.replaceFolders && options.compare == .none && !summary.cancelled {
+            if summary.failed == 0 {
+                for o in replaceOrphans(plan: plan) {
+                    do {
+                        try fm.trashItem(at: o.url, resultingItemURL: nil)
+                        summary.replacedAway += 1
+                        log(.info, L("置き換え：コピー先にしかないためゴミ箱へ: %@", o.path))
+                    } catch {
+                        summary.failed += 1
+                        log(.error, L("ゴミ箱へ移せません: %@ — %@", o.path, error.localizedDescription))
+                    }
+                }
+            } else {
+                log(.info, L("エラーがあったため、コピー先にしかないものは残しました"))
+            }
         }
 
         // 移動：空になったフォルダを片付ける（深いほうから）

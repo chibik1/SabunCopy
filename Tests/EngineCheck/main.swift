@@ -230,6 +230,37 @@ func runAll() async throws {
         check("プレビュー: 上書き", outcome("srcnewer") == .overwrite)
         check("プレビュー: スキップ（コピー先が新しい）", outcome("dstnewer") == .skip)
     }
+    // 11. 置き換え：コピー先にしかないものはゴミ箱へ、他は上書き。通常の上書きでは残る
+    do {
+        func prepare(_ name: String) throws -> (src: URL, dstRoot: URL, extra: URL, extraDir: URL) {
+            let (src, dstRoot) = try makeCase(name)
+            let d = dstRoot.appendingPathComponent("proj")
+            let extra = d.appendingPathComponent("\(P)extra.txt")
+            let extraDir = d.appendingPathComponent("\(P)extradir")
+            try write(extra, "EXTRA", mtime: new)
+            try write(extraDir.appendingPathComponent("\(P)deep.txt"), "DEEP", mtime: new)
+            return (src, dstRoot, extra, extraDir)
+        }
+        let a = try prepare("replace")
+        var o = CopyOptions(); o.initialPolicy = .overwrite; o.replaceFolders = true
+        let rows = try CopyEngine().analyze(sources: [a.src], destination: a.dstRoot, options: o) { _, _ in }
+        check("プレビュー: 置き換えで消えるものを列挙（フォルダは1件）",
+              rows.filter { $0.outcome == .trash }.count == 2)
+        let summary = await quiet(CopyEngine(), [a.src], a.dstRoot, o)
+        let d = a.dstRoot.appendingPathComponent("proj")
+        check("置き換え: コピー先にしかないファイルが消える", !fm.fileExists(atPath: a.extra.path))
+        check("置き換え: コピー先にしかないフォルダが消える", !fm.fileExists(atPath: a.extraDir.path))
+        check("置き換え: 同名は上書き・新規はコピー",
+              text(d.appendingPathComponent("\(P)dstnewer.txt")) == "SRC-OLD"
+              && text(d.appendingPathComponent("\(P)new.txt")) == "N")
+        check("置き換え: 件数", summary.replacedAway == 2 && summary.failed == 0)
+
+        let b = try prepare("overwrite-keeps")
+        var o2 = CopyOptions(); o2.initialPolicy = .overwrite
+        _ = await quiet(CopyEngine(), [b.src], b.dstRoot, o2)
+        check("通常の上書きではコピー先にしかないものが残る",
+              fm.fileExists(atPath: b.extra.path) && fm.fileExists(atPath: b.extraDir.path))
+    }
 }
 
 do {

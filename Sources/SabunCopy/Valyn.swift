@@ -16,10 +16,14 @@ extension Color {
 
 enum V {
     // Color
-    static let ground = Color(hex: 0x080c06)     // surface-ground
-    static let row = Color(hex: 0x11150f)        // surface-row
-    static let chip = Color(hex: 0x1b211a)       // surface-chip
+    static let ground = Color(hex: 0x12170f)     // surface-ground
+    static let row = Color(hex: 0x1b2018)        // surface-row
+    static let chip = Color(hex: 0x262d24)       // surface-chip
     static let blue = Color(hex: 0x4079bc)       // brand-blue
+    /// 青いパーツ共通のごく薄いグラデーション（上がわずかに明るい）
+    static let blueFill = LinearGradient(
+        colors: [Color(hex: 0x4a84c8), Color(hex: 0x3a72b2)],
+        startPoint: .top, endPoint: .bottom)
     static let blueTint = Color(hex: 0x6a99cc)   // brand-blue-tint
     static let onBrand = Color(hex: 0xffffff)
     static let barMuted = Color(hex: 0x383836)
@@ -70,7 +74,7 @@ struct VEmbossStyle: ButtonStyle {
         let shade: Double = kind == .blue ? 0.30 : 0.40
 
         return configuration.label
-            .background(shape.fill(kind == .blue ? V.blue : V.chip))
+            .background(shape.fill(kind == .blue ? AnyShapeStyle(V.blueFill) : AnyShapeStyle(V.chip)))
             .overlay(
                 VStack(spacing: 0) {
                     Rectangle().fill(Color.white.opacity(highlight)).frame(height: 1)
@@ -119,7 +123,7 @@ struct VSheetButtonStyle: ButtonStyle {
             .foregroundColor(primary ? V.onBrand : V.text)
             .padding(.horizontal, primary ? 18 : 14)
             .frame(height: 34)
-            .background(shape.fill(primary ? V.blue : V.chip))
+            .background(shape.fill(primary ? AnyShapeStyle(V.blueFill) : AnyShapeStyle(V.chip)))
             .overlay(shape.fill(Color.white.opacity(configuration.isPressed ? 0.10 : 0)))
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(shape)
@@ -289,14 +293,14 @@ struct VSlideToggle: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            Capsule().fill(V.blue)
+            Capsule().fill(V.blueFill)
 
             Capsule()
                 .fill(V.thumb)
                 .overlay(
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        Rectangle().fill(Color(hex: 0x080c06).opacity(0.2)).frame(height: 2)
+                        Rectangle().fill(Color(hex: 0x12170f).opacity(0.2)).frame(height: 2)
                     }
                     .clipShape(Capsule())
                     .allowsHitTesting(false)
@@ -346,7 +350,7 @@ struct VPillSegmented<T: Hashable>: View {
                         .foregroundColor(selected ? V.onBrand : V.text)
                         .frame(maxWidth: .infinity)
                         .frame(height: 24)
-                        .background(Capsule().fill(selected ? V.blue : Color.clear))
+                        .background(Capsule().fill(selected ? AnyShapeStyle(V.blueFill) : AnyShapeStyle(Color.clear)))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -414,7 +418,7 @@ struct VProgressBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(V.chip)
                 Capsule()
-                    .fill(V.blue)
+                    .fill(V.blueFill)
                     .frame(width: geo.size.width * CGFloat(max(0, min(1, fraction))))
             }
         }
@@ -488,7 +492,7 @@ struct VWindowStyler: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .visible       // ツールバーが無ければ、タイトルは中央に出る
             window.titlebarSeparatorStyle = .none
-            window.backgroundColor = NSColor(srgbRed: 8.0 / 255, green: 12.0 / 255, blue: 6.0 / 255, alpha: 1)
+            window.backgroundColor = NSColor(srgbRed: 18.0 / 255, green: 23.0 / 255, blue: 15.0 / 255, alpha: 1)
             // 大きさは固定（最小サイズのまま）
             window.styleMask.remove(.resizable)
             window.standardWindowButton(.zoomButton)?.isEnabled = false
@@ -503,7 +507,7 @@ struct VWindowStyler: NSViewRepresentable {
         private func paintTitlebar(_ window: NSWindow) {
             func name(_ view: NSView) -> String { String(describing: type(of: view)) }
             guard let frame = window.contentView?.superview else { return }
-            let ground = NSColor(srgbRed: 8.0 / 255, green: 12.0 / 255, blue: 6.0 / 255, alpha: 1)
+            let ground = NSColor(srgbRed: 18.0 / 255, green: 23.0 / 255, blue: 15.0 / 255, alpha: 1)
             for container in frame.subviews where name(container) == "NSTitlebarContainerView" {
                 for bar in container.subviews where name(bar) == "NSTitlebarView" {
                     for fill in bar.subviews where name(fill) == "NSView" {

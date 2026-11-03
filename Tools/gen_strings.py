@@ -17,6 +17,11 @@ EN = {
  "更新日時": "Date", "サイズ": "Size",
  "新しい": "Newer", "古い": "Older", "大きい": "Larger", "小さい": "Smaller",
  "残す": "Keep",
+ "置き換え": "Replace", "ゴミ箱へ": "To Trash",
+ "置き換え：コピー先にしかないためゴミ箱へ: %@": "Replace: moved to Trash (only in destination): %@",
+ "ゴミ箱へ移せません: %@ — %@": "Could not move to Trash: %@ — %@",
+ "エラーがあったため、コピー先にしかないものは残しました": "Because of errors, items only in the destination were kept",
+ "置き換えでゴミ箱へ %ld": "Replaced → Trash %ld",
  "確認": "Ask", "上書き": "Overwrite", "スキップ": "Skip", "両方残す": "Keep both",
  "比較": "Compare", "処理": "Action",
  # 状態

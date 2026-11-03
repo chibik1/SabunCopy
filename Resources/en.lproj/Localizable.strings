@@ -13,6 +13,7 @@
 "どちらを残すか" = "Which one to keep";
 "ウインドウを他のウインドウより常に前に表示します" = "Keeps the window in front of other windows.";
 "エラー" = "Error";
+"エラーがあったため、コピー先にしかないものは残しました" = "Because of errors, items only in the destination were kept";
 "クリア" = "Clear";
 "コピー" = "Copy";
 "コピー: %@" = "Copied: %@";
@@ -28,6 +29,8 @@
 "コピー先（既存）" = "Destination (existing)";
 "コピー後にSHA-256で内容が一致するかを確かめます。移動のときは常にオンです" = "After copying, checks with SHA-256 that the contents match. Always on for Move.";
 "コピー開始" = "Start copying";
+"ゴミ箱へ" = "To Trash";
+"ゴミ箱へ移せません: %@ — %@" = "Could not move to Trash: %@ — %@";
 "サイズ" = "Size";
 "サイズが大きいほうを残す" = "keep larger by size";
 "サイズが小さいほうを残す" = "keep smaller by size";
@@ -99,6 +102,9 @@
 "移動開始" = "Start moving";
 "空になったフォルダをゴミ箱へ: %@" = "Moved emptied folder to Trash: %@";
 "空フォルダ整理 %ld" = "Emptied folders %ld";
+"置き換え" = "Replace";
+"置き換えでゴミ箱へ %ld" = "Replaced → Trash %ld";
+"置き換え：コピー先にしかないためゴミ箱へ: %@" = "Replace: moved to Trash (only in destination): %@";
 "設定" = "Settings";
 "読み取れません: %@ — %@" = "Can’t read: %@ — %@";
 "追加…" = "Add…";
