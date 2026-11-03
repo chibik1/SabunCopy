@@ -39,8 +39,8 @@ enum VNS {
 enum V {
     // Color（左がダーク、右がライト）
     static let ground = Color(nsColor: VNS.ground)     // surface-ground
-    static let row = Color(nsColor: VNS.dynGlass(0x1b1f25, 0xf7f9fb, k: 0.6))        // surface-row
-    static let chip = Color(nsColor: VNS.dynGlass(0x262b32, 0xdce2ea, k: 0.5))       // surface-chip
+    static let row = Color(nsColor: VNS.dynGlass(0x1b1f25, 0xf7f9fb, k: 0.85))        // surface-row
+    static let chip = Color(nsColor: VNS.dynGlass(0x262b32, 0xdce2ea, k: 0.8))       // surface-chip
     static let blue = Color(hex: 0x4079bc)       // brand-blue
     /// 青いパーツ共通のごく薄いグラデーション（上がわずかに明るい）
     static let blueFill = LinearGradient(
@@ -571,8 +571,8 @@ struct VWindowStyler: NSViewRepresentable {
             }()
             var base = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
-            // 透明度を上げるほどベース色が薄くなる（いちばん透けても 4% は残す）
-            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - 0.96 * glass))
+            // 透明度を上げるほどベース色が薄くなる（最大では素材だけにする）
+            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - glass))
         }
 
         /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
