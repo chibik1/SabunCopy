@@ -559,6 +559,17 @@ struct VWindowStyler: NSViewRepresentable {
             applyGlass(window, glass: glass)
         }
 
+        /// ベースに重ねる色。ライトは白文字にするので暗めのガラス、ダークはごく薄く
+        private func glassTint(_ window: NSWindow) -> CGColor {
+            var base = VNS.ground.cgColor
+            window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
+            let isLight = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
+            if isLight && CopyModel.shared.glass > VNS.lightGlassOn {
+                return CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
+            }
+            return base.copy(alpha: 0.2) ?? base
+        }
+
         /// すりガラス：ウインドウの背後をぼかす素材と、その上に薄く重ねるベース色。
         /// glass = 0 なら何も置かず、従来どおり不透明のベース色にする。
         private func applyGlass(_ window: NSWindow, glass: Double) {
@@ -608,13 +619,7 @@ struct VWindowStyler: NSViewRepresentable {
             var base = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
             // 透明度を上げるほどベース色が薄くなる（最大では素材だけにする）
-            let isLight = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
-            if isLight && glass > VNS.lightGlassOn {
-                // ライトは白文字にするので、ベースを暗めのガラスにする
-                overlay.layer?.backgroundColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
-            } else {
-                overlay.layer?.backgroundColor = base.copy(alpha: 0.2)
-            }
+            overlay.layer?.backgroundColor = glassTint(window)
         }
 
         /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
@@ -668,13 +673,13 @@ struct VWindowStyler: NSViewRepresentable {
                     }
                 }
                 walk(container)
-                // ヘッダーにもウインドウ本体と同じぼかしを敷く（ぼかし具合のスライダーに連動）
-                let headID = NSUserInterfaceItemIdentifier("sabun.titlebar.blur")
-                let head = container.subviews.first { $0.identifier == headID } as? NSVisualEffectView
+                // ヘッダーにも、ウインドウ本体と同じ重ね方（ぼかし → Liquid Glass → ベース色）で敷く
+                let ids = ["sabun.titlebar.blur", "sabun.titlebar.glass", "sabun.titlebar.tint"].map { NSUserInterfaceItemIdentifier($0) }
+                func find(_ id: NSUserInterfaceItemIdentifier) -> NSView? { container.subviews.first { $0.identifier == id } }
                 if glassOn {
-                    let e = head ?? {
+                    let blurView = (find(ids[0]) as? NSVisualEffectView) ?? {
                         let v = NSVisualEffectView(frame: container.bounds)
-                        v.identifier = headID
+                        v.identifier = ids[0]
                         v.blendingMode = .behindWindow
                         v.material = .menu
                         v.state = .active
@@ -682,12 +687,32 @@ struct VWindowStyler: NSViewRepresentable {
                         container.addSubview(v, positioned: .below, relativeTo: nil)
                         return v
                     }()
-                    e.alphaValue = CGFloat(CopyModel.shared.blur)
+                    blurView.alphaValue = CGFloat(CopyModel.shared.blur)
+                    var above: NSView = blurView
+                    if #available(macOS 26.0, *) {
+                        let g = find(ids[1]) ?? {
+                            let v = NSGlassEffectView(frame: container.bounds)
+                            v.style = .clear
+                            v.cornerRadius = 0
+                            v.identifier = ids[1]
+                            v.autoresizingMask = [.width, .height]
+                            container.addSubview(v, positioned: .above, relativeTo: blurView)
+                            return v
+                        }()
+                        above = g
+                    }
+                    let t = find(ids[2]) ?? {
+                        let v = NSView(frame: container.bounds)
+                        v.identifier = ids[2]
+                        v.wantsLayer = true
+                        v.autoresizingMask = [.width, .height]
+                        container.addSubview(v, positioned: .above, relativeTo: above)
+                        return v
+                    }()
+                    t.layer?.backgroundColor = glassTint(window)
                 } else {
-                    head?.removeFromSuperview()
+                    ids.forEach { find($0)?.removeFromSuperview() }
                 }
-                // タイトルバーの装飾（OS が重ねる縁取りやぼかし）。すりガラスのときは消して、本体と同じ見た目にする
-                for deco in container.subviews where name(deco) == "_NSTitlebarDecorationView" { deco.isHidden = glassOn }
             }
         }
     }
