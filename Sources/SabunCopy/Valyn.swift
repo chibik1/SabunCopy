@@ -632,7 +632,14 @@ struct VWindowStyler: NSViewRepresentable {
                     for s in v.subviews { out += dump(s, d + 1) }
                     return out
                 }
-                try? dump(frame, 0).write(toFile: "/tmp/sabun_dump.txt", atomically: true, encoding: .utf8)
+                func dumpLayer(_ l: CALayer, _ d: Int) -> String {
+                    var out = String(repeating: "  ", count: d) + "\(type(of: l)) \(l.frame) bgf=\(String(describing: l.backgroundFilters)) f=\(String(describing: l.filters)) cf=\(String(describing: l.compositingFilter)) op=\(l.opacity) hidden=\(l.isHidden) bg=\(l.backgroundColor.flatMap { NSColor(cgColor: $0) }?.description ?? "-")\n"
+                    for c in l.sublayers ?? [] { out += dumpLayer(c, d + 1) }
+                    return out
+                }
+                var text = dump(frame, 0)
+                for c in frame.subviews where name(c) == "NSTitlebarContainerView" { if let l = c.layer { text += "\nLAYERS\n" + dumpLayer(l, 0) } }
+                try? text.write(toFile: "/tmp/sabun_dump.txt", atomically: true, encoding: .utf8)
             }
             let glassOn = CopyModel.shared.glass > 0.001
             let lightGlass = CopyModel.shared.glass > VNS.lightGlassOn
@@ -653,12 +660,32 @@ struct VWindowStyler: NSViewRepresentable {
                                     fillColor = CGColor(srgbRed: 0.13, green: 0.15, blue: 0.19, alpha: 0.62)
                                 }
                                 sub.layer?.backgroundColor = fillColor
+                                // この View の下地は OS のぼかし（CABackdropLayer）。すりガラスのときは隠して、本体と同じ透け方にする
+                                sub.isHidden = glassOn
                             }
                             if n == "NSTitlebarView" { walk(sub) }
                         }
                     }
                 }
                 walk(container)
+                // ヘッダーにもウインドウ本体と同じぼかしを敷く（ぼかし具合のスライダーに連動）
+                let headID = NSUserInterfaceItemIdentifier("sabun.titlebar.blur")
+                let head = container.subviews.first { $0.identifier == headID } as? NSVisualEffectView
+                if glassOn {
+                    let e = head ?? {
+                        let v = NSVisualEffectView(frame: container.bounds)
+                        v.identifier = headID
+                        v.blendingMode = .behindWindow
+                        v.material = .menu
+                        v.state = .active
+                        v.autoresizingMask = [.width, .height]
+                        container.addSubview(v, positioned: .below, relativeTo: nil)
+                        return v
+                    }()
+                    e.alphaValue = CGFloat(CopyModel.shared.blur)
+                } else {
+                    head?.removeFromSuperview()
+                }
                 // タイトルバーの装飾（OS が重ねる縁取りやぼかし）。すりガラスのときは消して、本体と同じ見た目にする
                 for deco in container.subviews where name(deco) == "_NSTitlebarDecorationView" { deco.isHidden = glassOn }
             }
