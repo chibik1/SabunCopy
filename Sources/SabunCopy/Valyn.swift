@@ -564,8 +564,8 @@ struct VWindowStyler: NSViewRepresentable {
             }()
             var base = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { base = VNS.ground.cgColor }
-            // 透明度を上げるほどベース色が薄くなる（いちばん透けても 10% は残す）
-            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - 0.9 * glass))
+            // 透明度を上げるほどベース色が薄くなる（いちばん透けても 4% は残す）
+            overlay.layer?.backgroundColor = base.copy(alpha: CGFloat(1 - 0.96 * glass))
         }
 
         /// タイトルバーの塗り（OS 標準のグレー）を surface-ground に替える。
@@ -576,13 +576,24 @@ struct VWindowStyler: NSViewRepresentable {
             guard let frame = window.contentView?.superview else { return }
             var ground = VNS.ground.cgColor
             window.effectiveAppearance.performAsCurrentDrawingAppearance { ground = VNS.ground.cgColor }
+            let glassOn = CopyModel.shared.glass > 0.001
             for container in frame.subviews where name(container) == "NSTitlebarContainerView" {
-                for bar in container.subviews where name(bar) == "NSTitlebarView" {
-                    for fill in bar.subviews where name(fill) == "NSView" {
-                        fill.wantsLayer = true
-                        fill.layer?.backgroundColor = CopyModel.shared.glass > 0.001 ? NSColor.clear.cgColor : ground
+                // タイトルバーの背景（塗り・ぼかし素材）。すりガラスのときは透明にして、ウインドウ全体と同じ透け方にする
+                func walk(_ view: NSView) {
+                    for sub in view.subviews {
+                        let n = name(sub)
+                        if n == "NSTitlebarView" || n == "NSView" || sub is NSVisualEffectView {
+                            if sub is NSVisualEffectView {
+                                sub.isHidden = glassOn
+                            } else if n == "NSView" {
+                                sub.wantsLayer = true
+                                sub.layer?.backgroundColor = glassOn ? NSColor.clear.cgColor : ground
+                            }
+                            if n == "NSTitlebarView" { walk(sub) }
+                        }
                     }
                 }
+                walk(container)
             }
         }
     }

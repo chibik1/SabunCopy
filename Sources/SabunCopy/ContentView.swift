@@ -462,10 +462,11 @@ struct ContentView: View {
                         Text(model.operation == .move ? L("移動開始") : L("コピー開始"))
                             .font(VFont.ui(17, .medium))
                     }
-                    .foregroundColor(V.onBrand)
+                    .foregroundColor(model.canStart ? V.onBrand : V.text)
                     .frame(maxWidth: .infinity, minHeight: 50)
                 }
-                .buttonStyle(VEmbossStyle(kind: .blue))
+                // 押せないときは、隣の目のボタンと同じ色
+                .buttonStyle(VEmbossStyle(kind: model.canStart ? .blue : .chip))
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canStart)
             }
