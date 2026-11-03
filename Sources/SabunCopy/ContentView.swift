@@ -120,7 +120,8 @@ struct ContentView: View {
             if model.dropMode { dropModeBody } else { fullBody }
         }
         .foregroundColor(V.text)
-        .background(VWindowStyler(theme: model.theme, glass: model.blur))
+        .background(VWindowStyler())
+        .modifier(VGlassBackground(blur: model.blur))
         // ドロップモードの切り替えと歯車：タイトルバーの高さ（信号ボタンと同じ行）の右端に重ねる
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 0) {
@@ -131,7 +132,7 @@ struct ContentView: View {
             .ignoresSafeArea(.container, edges: .top)
         }
         .overlay(alignment: .top) {
-            if model.glass > VNS.lightGlassOn {
+            do {
                 Text("SabunCopy")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(V.text)
