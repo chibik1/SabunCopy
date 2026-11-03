@@ -9,6 +9,8 @@
         <string>en</string>
         <string>ja</string>
     </array>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>SabunCopy</string>
     <key>CFBundleIdentifier</key>

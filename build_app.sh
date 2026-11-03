@@ -26,6 +26,8 @@ safe_remove_app "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/SabunCopy" "$APP/Contents/MacOS/SabunCopy"
 cp Info.plist "$APP/Contents/Info.plist"
+# アプリアイコン
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # 多言語（日本語・英語）の文字列
 cp -R Resources/*.lproj "$APP/Contents/Resources/"
 codesign --force --deep --sign - "$APP"
