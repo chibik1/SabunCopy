@@ -673,6 +673,14 @@ struct PreviewSheet: View {
                     if result.count(.error) > 0 { pill(.error) }
                 }
 
+                let adminCount = result.rows.filter { $0.needsAdmin }.count
+                if adminCount > 0 {
+                    Label(L("%ld 件は管理者権限が必要です（実行時にパスワードを確認します）", adminCount),
+                          systemImage: "lock.fill")
+                        .font(VFont.ui(11))
+                        .foregroundColor(V.muted)
+                }
+
                 VPillSegmented(options: PreviewFilter.Kind.allCases,
                                selection: $filter.kind,
                                label: { $0.label })
@@ -691,6 +699,12 @@ struct PreviewSheet: View {
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Spacer(minLength: 8)
+                                if row.needsAdmin {
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(V.muted)
+                                        .help("管理者権限が必要")
+                                }
                                 Text(row.outcome.label)
                                     .font(VFont.ui(11))
                                     .foregroundColor(accent)

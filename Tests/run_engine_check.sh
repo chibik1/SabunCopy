@@ -17,5 +17,5 @@ cleanup() {
 }
 trap cleanup EXIT
 
-swiftc -O Sources/SabunCopy/CopyEngine.swift Sources/SabunCopy/Localization.swift Tests/EngineCheck/main.swift -o "$OUT"
+swiftc -O Sources/SabunCopy/CopyEngine.swift Sources/SabunCopy/Localization.swift Sources/SabunCopy/Privileged.swift Tests/EngineCheck/main.swift -o "$OUT"
 "$OUT"

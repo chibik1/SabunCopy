@@ -143,7 +143,8 @@ final class CopyModel: ObservableObject {
                     preferHigh: preferHigh,
                     verify: verify,
                     initialPolicy: policy.action,
-                    replaceFolders: policy == .replace)
+                    replaceFolders: policy == .replace,
+                    allowAdmin: true)
     }
 
     // MARK: Window

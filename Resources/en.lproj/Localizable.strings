@@ -1,7 +1,9 @@
 /* UI strings (key = Japanese source) */
 "%@：%ld ファイル（%@）" = "%@: %ld files (%@)";
 "%ld ファイル" = "%ld files";
+"%ld 件は管理者権限が必要です（実行時にパスワードを確認します）" = "%ld items need administrator rights (you'll be asked for your password)";
 "%ld 項目" = "%ld items";
+"SabunCopy が管理者権限で %ld 件をコピーしようとしています。" = "SabunCopy wants to copy %ld items with administrator rights.";
 "「%@」の中にはコピーできません（コピー先がコピー元の内側です）" = "Can’t copy “%@” into itself (the destination is inside the source).";
 "「%@」はコピー元とコピー先が同じ場所です" = "“%@” has the same source and destination.";
 "お気に入り" = "Favorites";
@@ -48,6 +50,7 @@
 "スキップ（移動元は残します）: %@" = "Skipped (source kept): %@";
 "ドロップモード" = "Drop mode";
 "ハッシュ照合" = "Verify with hash";
+"パスワードの確認がキャンセルされたため、コピーしませんでした: %@" = "Not copied because the password prompt was cancelled: %@";
 "フォルダの中身を読み取れません: %@" = "Can’t read the contents of folder: %@";
 "フォルダを作成できません: %@ — %@" = "Couldn’t create folder: %@ — %@";
 "フォルダを選ぶ…" = "Choose folder…";
@@ -97,6 +100,7 @@
 "残す" = "Keep";
 "比較" = "Compare";
 "比較で選んだほうを残します" = "Keeps the one chosen by “Compare”";
+"照合が一致しないため失敗扱いにしました: %@" = "Verification mismatch, treated as failed: %@";
 "照合に失敗しました（コピー元とコピー先の内容が一致しません）" = "Verification failed (source and destination contents don’t match)";
 "確認" = "Ask";
 "移動" = "Move";
@@ -105,6 +109,15 @@
 "移動開始" = "Start moving";
 "空になったフォルダをゴミ箱へ: %@" = "Moved emptied folder to Trash: %@";
 "空フォルダ整理 %ld" = "Emptied folders %ld";
+"管理者権限が必要" = "Needs administrator rights";
+"管理者権限が必要: %@" = "Needs administrator rights: %@";
+"管理者権限が必要な %ld 件を処理します（パスワードを確認します）" = "Processing %ld items that need administrator rights (password required)";
+"管理者権限でもコピーできませんでした: %@" = "Could not copy even with administrator rights: %@";
+"管理者権限でコピー: %@" = "Copied with administrator rights: %@";
+"管理者権限でフォルダを作成: %@" = "Created folder with administrator rights: %@";
+"管理者権限で上書き: %@" = "Overwritten with administrator rights: %@";
+"管理者権限で別名で保存: %@" = "Saved under a new name with administrator rights: %@";
+"管理者権限で実行できませんでした（%@）: %@" = "Could not run with administrator rights (%@): %@";
 "置き換え" = "Replace";
 "置き換えでゴミ箱へ %ld" = "Replaced → Trash %ld";
 "置き換え：コピー先にしかないためゴミ箱へ: %@" = "Replace: moved to Trash (only in destination): %@";

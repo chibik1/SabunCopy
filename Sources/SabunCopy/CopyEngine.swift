@@ -44,6 +44,8 @@ struct CopyOptions: Sendable {
     var initialPolicy: ConflictAction?
     /// 置き換え：同名フォルダはコピー元と同じ中身にする（コピー先にしかないものはゴミ箱へ）
     var replaceFolders = false
+    /// 権限が足りない分を、最後にパスワードを聞いて管理者権限で処理する
+    var allowAdmin = false
 }
 
 // MARK: - Types
@@ -123,6 +125,8 @@ struct PreviewRow: Identifiable, Sendable {
     let path: String
     let outcome: PreviewOutcome
     let size: Int64
+    /// 書き込むのに管理者権限が要る（実行時にパスワードを聞く）
+    var needsAdmin = false
 }
 
 struct CopyError: LocalizedError {
@@ -144,6 +148,9 @@ final class CopyEngine: @unchecked Sendable {
     private let fm = FileManager.default
     private var removedFiles = 0
     private var removedDirs = 0
+    /// 管理者権限での実行役（テストで差し替える）
+    var adminRunner: Privileged.Runner = Privileged.osascript
+    private var adminEnabled = false
 
     // MARK: Plan
 
@@ -302,7 +309,8 @@ final class CopyEngine: @unchecked Sendable {
 
             let dst = item.destination
             if !exists(dst) {
-                rows.append(PreviewRow(path: item.relativePath, outcome: .new, size: item.size))
+                rows.append(PreviewRow(path: item.relativePath, outcome: .new, size: item.size,
+                                       needsAdmin: !canWrite(into: dst.deletingLastPathComponent())))
                 continue
             }
             if isDirectory(dst) {
@@ -311,7 +319,9 @@ final class CopyEngine: @unchecked Sendable {
             }
             let outcome = plannedOutcome(snapshot(of: item.source), snapshot(of: dst),
                                          isSymlink: item.isSymlink, options: options)
-            rows.append(PreviewRow(path: item.relativePath, outcome: outcome, size: item.size))
+            let writes = outcome == .overwrite || outcome == .ask || outcome == .keepBoth
+            rows.append(PreviewRow(path: item.relativePath, outcome: outcome, size: item.size,
+                                   needsAdmin: writes && !canWrite(into: dst.deletingLastPathComponent())))
         }
         progress(files.count, files.count)
         if options.replaceFolders && options.compare == .none {
@@ -349,6 +359,8 @@ final class CopyEngine: @unchecked Sendable {
         log(.info, L("%@：%ld ファイル（%@）", options.operation.label, p.filesTotal, formatBytes(p.bytesTotal)))
 
         var sticky: ConflictAction? = nil
+        adminEnabled = options.allowAdmin
+        var adminOps: [AdminOp] = []
 
         for item in plan {
             if Task.isCancelled { summary.cancelled = true; break }
@@ -356,6 +368,8 @@ final class CopyEngine: @unchecked Sendable {
             if item.isDirectory {
                 do {
                     try ensureDirectory(item.destination)
+                } catch let need as NeedsAdmin {
+                    adminOps.append(need.op)
                 } catch {
                     summary.failed += 1
                     log(.error, L("フォルダを作成できません: %@ — %@", item.relativePath, error.localizedDescription))
@@ -379,6 +393,9 @@ final class CopyEngine: @unchecked Sendable {
                     summary.cancelled = true
                     break
                 }
+            } catch let need as NeedsAdmin {
+                adminOps.append(need.op)
+                log(.info, L("管理者権限が必要: %@", item.relativePath))
             } catch {
                 summary.failed += 1
                 log(.error, "\(item.relativePath) — \(error.localizedDescription)")
@@ -388,6 +405,12 @@ final class CopyEngine: @unchecked Sendable {
             p.bytesDone += item.size
             progress(p)
         }
+
+        // 管理者権限：権限が足りなかった分を、パスワードを 1 回聞いてまとめて処理する
+        if !adminOps.isEmpty && !summary.cancelled {
+            await runAdmin(adminOps, options: options, summary: &summary, log: log)
+        }
+        adminEnabled = false
 
         // 置き換え：コピー先にしかないものをゴミ箱へ（コピーが全部成功したときだけ）
         if options.replaceFolders && options.compare == .none && !summary.cancelled {
@@ -434,8 +457,13 @@ final class CopyEngine: @unchecked Sendable {
         let verifyNow = options.verify || isMove   // 移動は必ず照合してから元を消す
 
         guard exists(dst) else {
-            try ensureDirectory(dst.deletingLastPathComponent())
-            try copyViaTemp(item, to: dst, verify: verifyNow, replacing: false)
+            do {
+                try ensureDirectory(dst.deletingLastPathComponent())
+            } catch is NeedsAdmin {
+                throw NeedsAdmin(op: AdminOp(kind: .file, result: .copied, item: item,
+                                             destination: dst, relativePath: item.relativePath))
+            }
+            try copyViaTemp(item, to: dst, verify: verifyNow, replacing: false, as: .copied)
             log(.copied, isMove ? L("移動: %@", item.relativePath) : L("コピー: %@", item.relativePath))
             try finishMove(item, options: options)
             return .copied
@@ -512,7 +540,7 @@ final class CopyEngine: @unchecked Sendable {
 
         case .overwriteIfNewer:
             if srcSnap.modified > dstSnap.modified.addingTimeInterval(2) {
-                try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true)
+                try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true, as: .overwritten)
                 log(.overwritten, L("上書き（コピー元が新しい）: %@", item.relativePath))
                 try finishMove(item, options: options)
                 return .overwritten
@@ -523,7 +551,7 @@ final class CopyEngine: @unchecked Sendable {
             }
 
         case .overwrite:
-            try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true)
+            try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true, as: .overwritten)
             log(.overwritten, rulePhrase.isEmpty ? L("上書き: %@", item.relativePath)
                                               : L("上書き（%@）: %@", rulePhrase, item.relativePath))
             try finishMove(item, options: options)
@@ -531,7 +559,7 @@ final class CopyEngine: @unchecked Sendable {
 
         case .keepBoth:
             let newURL = uniqueURL(for: dst)
-            try copyViaTemp(item, to: newURL, verify: verifyNow, replacing: false)
+            try copyViaTemp(item, to: newURL, verify: verifyNow, replacing: false, as: .renamed)
             log(.renamed, L("別名で保存: %@ → %@", item.relativePath, newURL.lastPathComponent))
             try finishMove(item, options: options)
             return .renamed
@@ -587,7 +615,93 @@ final class CopyEngine: @unchecked Sendable {
             if isDir.boolValue { return }
             throw CopyError(message: L("同名のファイルがあるためフォルダを作成できません"))
         }
-        try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        do {
+            try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            if adminEnabled && Privileged.isPermissionError(error) {
+                throw NeedsAdmin(op: AdminOp(kind: .directory, result: .directory, item: nil,
+                                             destination: url, relativePath: url.path))
+            }
+            throw error
+        }
+    }
+
+    /// そのフォルダ（無ければ、いちばん近い既存の親）に、今のユーザで書き込めるか
+    private func canWrite(into dir: URL) -> Bool {
+        var d = dir
+        while !fm.fileExists(atPath: d.path) {
+            let parent = d.deletingLastPathComponent()
+            if parent.path == d.path { break }
+            d = parent
+        }
+        return fm.isWritableFile(atPath: d.path)
+    }
+
+    // MARK: Admin
+
+    private func runAdmin(_ ops: [AdminOp], options: CopyOptions,
+                          summary: inout CopySummary, log: LogHandler) async {
+        let files = ops.filter { $0.kind == .file }.count
+        log(.info, L("管理者権限が必要な %ld 件を処理します（パスワードを確認します）", ops.count))
+        let prompt = L("SabunCopy が管理者権限で %ld 件をコピーしようとしています。", max(files, ops.count))
+        var ok = Set<Int>()
+        var failure: Privileged.RunError?
+        for chunk in Privileged.scripts(for: ops) {
+            switch await adminRunner(chunk.script, prompt) {
+            case .success(let out):
+                ok.formUnion(Privileged.succeeded(in: out))
+            case .failure(let e):
+                failure = e
+            }
+            if failure != nil { break }
+        }
+
+        let isMove = options.operation == .move
+        for (i, op) in ops.enumerated() {
+            guard ok.contains(i) else {
+                summary.failed += 1
+                if let f = failure, f.cancelled {
+                    log(.error, L("パスワードの確認がキャンセルされたため、コピーしませんでした: %@", op.relativePath))
+                } else if let f = failure {
+                    log(.error, L("管理者権限で実行できませんでした（%@）: %@", f.message, op.relativePath))
+                } else {
+                    log(.error, L("管理者権限でもコピーできませんでした: %@", op.relativePath))
+                }
+                continue
+            }
+            guard op.kind == .file, let item = op.item else {
+                log(.info, L("管理者権限でフォルダを作成: %@", op.destination.lastPathComponent))
+                continue
+            }
+            // 照合（移動のときは必ず）。読み取りは今のユーザでできる
+            if (options.verify || isMove) && !item.isSymlink {
+                let same = (try? sha256(of: item.source)) == (try? sha256(of: op.destination))
+                if !same {
+                    summary.failed += 1
+                    log(.error, L("照合が一致しないため失敗扱いにしました: %@", item.relativePath))
+                    continue
+                }
+            }
+            switch op.result {
+            case .copied:
+                summary.copied += 1
+                log(.copied, L("管理者権限でコピー: %@", item.relativePath))
+            case .overwritten:
+                summary.overwritten += 1
+                log(.overwritten, L("管理者権限で上書き: %@", item.relativePath))
+            case .renamed:
+                summary.renamed += 1
+                log(.renamed, L("管理者権限で別名で保存: %@", item.relativePath))
+            case .directory:
+                break
+            }
+            if isMove {
+                do { try trashSource(item) } catch {
+                    summary.failed += 1
+                    log(.error, "\(item.relativePath) — \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     private func snapshot(of url: URL) -> FileSnapshot {
@@ -607,7 +721,8 @@ final class CopyEngine: @unchecked Sendable {
     /// 同じフォルダの一時ファイルへ書き、照合まで済んでから最終の名前に切り替える。
     /// 途中で失敗しても（強制終了しても）、最終の名前に中途半端なファイルが残らない。
     /// 上書きのときも、新しい内容が揃うまで既存のファイルには触れない。
-    private func copyViaTemp(_ item: PlanItem, to final: URL, verify: Bool, replacing: Bool) throws {
+    private func copyViaTemp(_ item: PlanItem, to final: URL, verify: Bool, replacing: Bool,
+                             as result: AdminOp.Result) throws {
         let tmp = final.deletingLastPathComponent()
             .appendingPathComponent(".sabun-\(UUID().uuidString).tmp")
         do {
@@ -623,6 +738,10 @@ final class CopyEngine: @unchecked Sendable {
             }
         } catch {
             try? fm.removeItem(at: tmp)
+            if adminEnabled && Privileged.isPermissionError(error) {
+                throw NeedsAdmin(op: AdminOp(kind: .file, result: result, item: item,
+                                             destination: final, relativePath: item.relativePath))
+            }
             throw error
         }
         if replacing { restoreTimestamp(item, at: final) }

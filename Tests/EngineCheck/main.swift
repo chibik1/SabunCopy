@@ -217,6 +217,62 @@ func runAll() async throws {
         check("書き込めないコピー先は失敗として数える", summary.failed == 1 && summary.copied == 0)
         check("失敗したあとにファイルが残らない", names.isEmpty)
     }
+    do { // 管理者権限：権限が足りない分を最後にまとめて処理する（実行役は普通のシェルに差し替え）
+        let base = root.appendingPathComponent("admin")
+        let src = base.appendingPathComponent("src/proj")
+        let odd = "\(P)a b'c $x 日本.txt"            // 空白・引用符・$・日本語
+        try write(src.appendingPathComponent(odd), "ODD", mtime: new)
+        try write(src.appendingPathComponent("sub/\(P)deep.txt"), "DEEP", mtime: new)
+        try write(src.appendingPathComponent("\(P)over.txt"), "NEWER", mtime: new)
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try write(dstProj.appendingPathComponent("\(P)over.txt"), "OLD", mtime: old)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dstProj.path)
+
+        var o = CopyOptions(); o.initialPolicy = .overwrite; o.allowAdmin = true; o.verify = true
+        let rows = try CopyEngine().analyze(sources: [src], destination: base.appendingPathComponent("dst"), options: o) { _, _ in }
+        check("プレビュー: 管理者権限が必要な行に印が付く", rows.filter { $0.needsAdmin }.count == 3)
+
+        let e = CopyEngine()
+        let calls = Counter()
+        let dirPath = dstProj.path
+        e.adminRunner = { script, _ in
+            calls.asked += 1
+            // root の代わり：書き込めるように戻してから、同じ命令を普通のシェルで実行する
+            _ = try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dirPath)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/sh")
+            p.arguments = ["-c", script]
+            let out = Pipe(); p.standardOutput = out
+            try? p.run(); p.waitUntilExit()
+            return .success(String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
+        }
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        check("管理者権限: パスワードは 1 回だけ", calls.asked == 1)
+        check("管理者権限: 変わった名前のファイルもコピーできる", text(dstProj.appendingPathComponent(odd)) == "ODD")
+        check("管理者権限: 新しいフォルダの中にもコピーできる", text(dstProj.appendingPathComponent("sub/\(P)deep.txt")) == "DEEP")
+        check("管理者権限: 上書きできる", text(dstProj.appendingPathComponent("\(P)over.txt")) == "NEWER")
+        check("管理者権限: 件数", summary.copied == 2 && summary.overwritten == 1 && summary.failed == 0)
+        let mt = (try? fm.attributesOfItem(atPath: dstProj.appendingPathComponent(odd).path))?[.modificationDate] as? Date
+        check("管理者権限: 更新日時を保つ", mt.map { abs($0.timeIntervalSince(new)) < 2 } ?? false)
+        let left = ((try? fm.contentsOfDirectory(atPath: dstProj.path)) ?? []).filter { $0.hasPrefix(".sabun-") }
+        check("管理者権限: 一時ファイルが残らない", left.isEmpty)
+    }
+    do { // 管理者権限：パスワードをキャンセルしたら失敗として数え、何も書かない
+        let base = root.appendingPathComponent("admin-cancel")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("\(P)new.txt"), "N", mtime: new)
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try fm.createDirectory(at: dstProj, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dstProj.path)
+        let e = CopyEngine()
+        e.adminRunner = { _, _ in .failure(Privileged.RunError(message: "User canceled. (-128)", cancelled: true)) }
+        var o = CopyOptions(); o.allowAdmin = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        let names = (try? fm.contentsOfDirectory(atPath: dstProj.path)) ?? []
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dstProj.path)
+        check("キャンセル: 失敗として数える", summary.failed == 1 && summary.copied == 0)
+        check("キャンセル: 何も書かない", names.isEmpty)
+    }
     // 10. 差分プレビューの判断が実行と一致する
     do {
         let (src, dstRoot) = try makeCase("analyze")
