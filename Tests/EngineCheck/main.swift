@@ -273,6 +273,102 @@ func runAll() async throws {
         check("キャンセル: 失敗として数える", summary.failed == 1 && summary.copied == 0)
         check("キャンセル: 何も書かない", names.isEmpty)
     }
+    // root の代わりに普通のシェルで実行する（出力は読み切ってから終了を待つ）
+    let shRun: @Sendable (String) -> String = { script in
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", script]
+        let out = Pipe(); p.standardOutput = out
+        try? p.run()
+        let d = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(data: d, encoding: .utf8) ?? ""
+    }
+    do { // 管理者権限：件数が多く命令が長くなっても、パスワードは 1 回だけ
+        let base = root.appendingPathComponent("admin-many")
+        let src = base.appendingPathComponent("src/proj")
+        let long = String(repeating: "長い名前", count: 18)   // 1 件あたりの命令を長くする
+        for i in 0..<250 { try write(src.appendingPathComponent("\(P)\(i)_\(long).txt"), "F\(i)", mtime: new) }
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try fm.createDirectory(at: dstProj, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dstProj.path)
+        let e = CopyEngine()
+        let calls = Counter()
+        let dirPath = dstProj.path
+        e.adminRunner = { script, _ in
+            calls.asked += 1
+            _ = try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dirPath)
+            return .success(shRun(script))
+        }
+        var o = CopyOptions(); o.allowAdmin = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        let copied = ((try? fm.contentsOfDirectory(atPath: dstProj.path)) ?? []).filter { $0.hasSuffix(".txt") }.count
+        check("多数の管理者権限: パスワードは 1 回だけ（以前は 200KB ごとに聞き直していた）", calls.asked == 1 && e.adminCalls == 1)
+        check("多数の管理者権限: 全件コピー", copied == 250 && summary.copied == 250 && summary.failed == 0)
+        let leftovers = ((try? fm.contentsOfDirectory(atPath: fm.temporaryDirectory.path)) ?? []).filter { $0.hasPrefix("SabunCopy-admin-") }
+        check("多数の管理者権限: 作業用の一時ファイルを残さない", leftovers.isEmpty)
+    }
+    do { // 管理者権限：書いた本体が実行前に書き換えられたら実行しない
+        let base = root.appendingPathComponent("admin-tamper")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("\(P)t.txt"), "T", mtime: new)
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try fm.createDirectory(at: dstProj, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dstProj.path)
+        let marker = base.appendingPathComponent("\(P)evil").path
+        let e = CopyEngine()
+        let dirPath = dstProj.path
+        e.adminRunner = { script, _ in
+            _ = try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dirPath)
+            // 起動命令から本体のパスを取り出して書き換える
+            if let r = script.range(of: #"/bin/cp '([^']+)'"#, options: .regularExpression) {
+                let path = String(script[r].dropFirst("/bin/cp '".count).dropLast())
+                try? "touch '\(marker)'\n".write(toFile: path, atomically: false, encoding: .utf8)
+            }
+            return .success(shRun(script))
+        }
+        var o = CopyOptions(); o.allowAdmin = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        check("書き換え検出: 書き換えられた本体は実行しない", !fm.fileExists(atPath: marker))
+        check("書き換え検出: 何もコピーせず失敗として数える",
+              summary.failed == 1 && !fm.fileExists(atPath: dstProj.appendingPathComponent("\(P)t.txt").path))
+    }
+    do { // 管理者権限：パスワード待ちの間に中止したら、すぐに止まる
+        let base = root.appendingPathComponent("admin-abort")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("\(P)a.txt"), "A", mtime: new)
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try fm.createDirectory(at: dstProj, withIntermediateDirectories: true)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dstProj.path)
+        let e = CopyEngine()
+        e.adminRunner = { _, _ in
+            // 本物と同じく、中止されたら終わる（最長 20 秒で打ち切り）
+            for _ in 0..<200 where !Task.isCancelled { try? await Task.sleep(nanoseconds: 100_000_000) }
+            return .failure(Privileged.RunError(message: "", cancelled: true))
+        }
+        var o = CopyOptions(); o.allowAdmin = true
+        let started = Date()
+        let t = Task { await quiet(e, [src], base.appendingPathComponent("dst"), o) }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        t.cancel()
+        let summary = await t.value
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dstProj.path)
+        check("中止: パスワード待ちでもすぐ止まる", Date().timeIntervalSince(started) < 5 && summary.cancelled)
+    }
+    do { // 読めないコピー元は管理者権限に回さない（パスワードを聞かない）
+        let base = root.appendingPathComponent("admin-unreadable")
+        let src = base.appendingPathComponent("src/proj")
+        let f = src.appendingPathComponent("\(P)secret.txt")
+        try write(f, "S", mtime: new)
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: f.path)
+        let e = CopyEngine()
+        let calls = Counter()
+        e.adminRunner = { _, _ in calls.asked += 1; return .success("") }
+        var o = CopyOptions(); o.allowAdmin = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: f.path)
+        check("読めないコピー元: パスワードを聞かず失敗にする", calls.asked == 0 && summary.failed == 1)
+    }
     do { // 照合の方式：同じ APFS ボリュームはクローンと確認して読み直さない
         let base = root.appendingPathComponent("verify-clone")
         let src = base.appendingPathComponent("src/proj")

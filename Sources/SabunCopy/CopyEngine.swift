@@ -129,6 +129,33 @@ struct PreviewRow: Identifiable, Sendable {
     var needsAdmin = false
 }
 
+/// 処理の途中でディスクが外れていないかを確かめる。
+/// 各パス（無ければいちばん近い既存の親）が載っているボリュームの識別子を最初に覚え、後で比べる。
+final class VolumeWatch {
+    private var entries: [(url: URL, id: NSObject?)] = []
+    init(urls: [URL]) {
+        entries = urls.map { ($0, VolumeWatch.volumeID(of: $0)) }
+    }
+    /// 最初と違うボリュームになった（＝外れた）パス
+    func missing() -> URL? {
+        for e in entries where e.id != nil {
+            let now = VolumeWatch.volumeID(of: e.url)
+            if now == nil || !(now!.isEqual(e.id)) { return e.url }
+        }
+        return nil
+    }
+    static func volumeID(of url: URL) -> NSObject? {
+        var d = URL(fileURLWithPath: url.path)   // 値の記憶を使わないよう毎回作る
+        let fm = FileManager.default
+        while !fm.fileExists(atPath: d.path) {
+            let parent = d.deletingLastPathComponent()
+            if parent.path == d.path { return nil }
+            d = parent
+        }
+        return (try? d.resourceValues(forKeys: [.volumeIdentifierKey]))?.volumeIdentifier as? NSObject
+    }
+}
+
 struct CopyError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
@@ -154,6 +181,7 @@ final class CopyEngine: @unchecked Sendable {
     /// 照合の方式ごとの件数（テストと確認用）
     private(set) var cloneVerifiedByIdentity = 0   // クローンと確認できたので読み直さなかった
     private(set) var streamedCopies = 0            // 読みながらハッシュを取って書いた
+    private(set) var adminCalls = 0                // パスワード画面を出した回数
     /// テスト用：同じドライブでも、読みながら書く方式を使う
     var testForceStream = false
     /// テスト用：書き終えた直後（照合の前）にコピー先へ手を加える
@@ -368,16 +396,30 @@ final class CopyEngine: @unchecked Sendable {
         var sticky: ConflictAction? = nil
         adminEnabled = options.allowAdmin
         var adminOps: [AdminOp] = []
+        // 途中でディスクが外れたら気づけるように、コピー先とコピー元のボリュームを覚えておく。
+        // （外れると /Volumes/… は起動ディスク上の書き込めない場所になり、権限エラーに見える。
+        //   そのまま管理者権限に回すと、起動ディスクの /Volumes に書いてしまうおそれがある）
+        let watch = VolumeWatch(urls: [destination] + sources)
+        func stopIfVolumeGone() -> Bool {
+            guard let gone = watch.missing() else { return false }
+            let msg = L("ディスクが取り外されたため中止しました: %@", gone.path)
+            summary.fatalError = msg
+            summary.cancelled = true
+            log(.error, msg)
+            return true
+        }
 
-        for item in plan {
+        itemLoop: for item in plan {
             if Task.isCancelled { summary.cancelled = true; break }
 
             if item.isDirectory {
                 do {
                     try ensureDirectory(item.destination)
                 } catch let need as NeedsAdmin {
+                    if stopIfVolumeGone() { break itemLoop }
                     adminOps.append(need.op)
                 } catch {
+                    if stopIfVolumeGone() { break itemLoop }
                     summary.failed += 1
                     log(.error, L("フォルダを作成できません: %@ — %@", item.relativePath, error.localizedDescription))
                 }
@@ -401,9 +443,11 @@ final class CopyEngine: @unchecked Sendable {
                     break
                 }
             } catch let need as NeedsAdmin {
+                if stopIfVolumeGone() { break itemLoop }
                 adminOps.append(need.op)
                 log(.info, L("管理者権限が必要: %@", item.relativePath))
             } catch {
+                if stopIfVolumeGone() { break itemLoop }
                 summary.failed += 1
                 log(.error, "\(item.relativePath) — \(error.localizedDescription)")
             }
@@ -414,7 +458,7 @@ final class CopyEngine: @unchecked Sendable {
         }
 
         // 管理者権限：権限が足りなかった分を、パスワードを 1 回聞いてまとめて処理する
-        if !adminOps.isEmpty && !summary.cancelled {
+        if !adminOps.isEmpty && !summary.cancelled && !stopIfVolumeGone() {
             await runAdmin(adminOps, options: options, summary: &summary, log: log)
         }
         adminEnabled = false
@@ -648,6 +692,15 @@ final class CopyEngine: @unchecked Sendable {
         }
     }
 
+    /// 今のユーザでコピー元を開けるか（権限やプライバシー保護で拒否されていないか）
+    private func canRead(_ item: PlanItem) -> Bool {
+        if item.isSymlink { return true }
+        let fd = open(item.source.path, O_RDONLY)
+        if fd < 0 { return !(errno == EPERM || errno == EACCES) }
+        close(fd)
+        return true
+    }
+
     /// そのフォルダ（無ければ、いちばん近い既存の親）に、今のユーザで書き込めるか
     private func canWrite(into dir: URL) -> Bool {
         var d = dir
@@ -668,14 +721,30 @@ final class CopyEngine: @unchecked Sendable {
         let prompt = L("SabunCopy が管理者権限で %ld 件をコピーしようとしています。", max(files, ops.count))
         var ok = Set<Int>()
         var failure: Privileged.RunError?
-        for chunk in Privileged.scripts(for: ops) {
-            switch await adminRunner(chunk.script, prompt) {
+        // 本体は自分だけが読み書きできる一時フォルダに書き、短い起動命令を 1 回だけ実行する
+        // （件数が多くてもパスワードは 1 回）
+        let work = fm.temporaryDirectory.appendingPathComponent("SabunCopy-admin-\(UUID().uuidString)")
+        do {
+            try fm.createDirectory(at: work, withIntermediateDirectories: true,
+                                   attributes: [.posixPermissions: 0o700])
+            let file = work.appendingPathComponent("run.sh")
+            let body = Data(Privileged.script(for: ops).utf8)
+            try body.write(to: file, options: .atomic)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            let hash = SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined()
+            adminCalls += 1
+            switch await adminRunner(Privileged.launcher(scriptAt: file, sha256: hash), prompt) {
             case .success(let out):
-                ok.formUnion(Privileged.succeeded(in: out))
+                ok = Privileged.succeeded(in: out)
             case .failure(let e):
                 failure = e
             }
-            if failure != nil { break }
+        } catch {
+            failure = Privileged.RunError(message: error.localizedDescription, cancelled: false)
+        }
+        try? fm.removeItem(at: work)
+        if Task.isCancelled {   // 中止ボタン（パスワード画面のキャンセルは失敗として数える）
+            summary.cancelled = true
         }
 
         let isMove = options.operation == .move
@@ -759,6 +828,10 @@ final class CopyEngine: @unchecked Sendable {
         } catch {
             try? fm.removeItem(at: tmp)
             if adminEnabled && Privileged.isPermissionError(error) {
+                // 読めないのはコピー元の側（プライバシー保護で拒否されたなど）。管理者権限では解決しないので聞かない
+                guard canRead(item) else {
+                    throw CopyError(message: L("コピー元を読み取れません（アクセスが許可されていません）"))
+                }
                 throw NeedsAdmin(op: AdminOp(kind: .file, result: result, item: item,
                                              destination: final, relativePath: item.relativePath))
             }

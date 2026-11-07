@@ -22,7 +22,7 @@ struct NeedsAdmin: Error {
 /// macOS 標準のパスワード画面（AppleScript の `do shell script … with administrator privileges`、
 /// Apple TN2065）で、まとめた命令を 1 回で実行する。
 /// - 承認は同じ命令に限って 5 分間有効。命令が変われば聞き直される。
-/// - 命令の長さは約 262,000 バイトまで（kern.argmax）。超える分は分けて実行する。
+/// - 命令の長さには上限がある（kern.argmax）。件数が多くても 1 回で済むよう、本体はファイルで渡す。
 /// - サンドボックスのアプリでは動かない（SabunCopy はサンドボックス外）。
 enum Privileged {
     /// 実行役。テストでは普通のシェルに差し替える。
@@ -33,9 +33,6 @@ enum Privileged {
         let message: String
         let cancelled: Bool
     }
-
-    /// 1 回に渡す命令の上限（仕様の 262,144 バイトに余裕を持たせる）
-    static let chunkLimit = 200_000
 
     /// 権限不足のエラーか（EACCES / EPERM / Cocoa の書き込み権限なし）
     static func isPermissionError(_ error: Error) -> Bool {
@@ -53,23 +50,28 @@ enum Privileged {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    /// 操作ごとに「OK 番号」か「NG 番号」を 1 行出すシェルスクリプトを作る（上限ごとに分ける）
-    static func scripts(for ops: [AdminOp]) -> [(script: String, indices: [Int])] {
-        var chunks: [(String, [Int])] = []
-        var current = ""
-        var indices: [Int] = []
-        for (i, op) in ops.enumerated() {
-            let line = command(for: op, index: i) + "\n"
-            if !current.isEmpty && current.utf8.count + line.utf8.count > chunkLimit {
-                chunks.append((current + "exit 0\n", indices))
-                current = ""
-                indices = []
-            }
-            current += line
-            indices.append(i)
-        }
-        if !current.isEmpty { chunks.append((current + "exit 0\n", indices)) }
-        return chunks
+    /// 操作ごとに「OK 番号」か「NG 番号」を 1 行出すシェルスクリプト（全件を 1 本にまとめる）
+    static func script(for ops: [AdminOp]) -> String {
+        ops.enumerated().map { command(for: $0.element, index: $0.offset) }.joined(separator: "\n") + "\nexit 0\n"
+    }
+
+    /// パスワード画面で実行する短い起動命令。
+    /// 承認は「同じ命令」に限って 5 分間有効で、命令が変わるたびに聞き直される（TN2065）。
+    /// そこで件数がいくら多くても、本体はファイルに書いて、この短い命令 1 本だけを実行する。
+    /// 本体は root だけが触れる一時フォルダへ写してから SHA-256 を確かめ、一致したときだけ実行する
+    /// （書いてから実行するまでの間に差し替えられても、実行しない）。
+    static func launcher(scriptAt file: URL, sha256 hash: String) -> String {
+        let f = quote(file.path)
+        return """
+        d=$(/usr/bin/mktemp -d /private/tmp/sabuncopy.XXXXXX) || exit 70
+        if ! /bin/cp \(f) "$d/run.sh"; then /bin/rm -rf "$d"; exit 71; fi
+        if [ -x /sbin/sha256sum ]; then h=$(/sbin/sha256sum "$d/run.sh" | /usr/bin/cut -c1-64); \
+        else h=$(/usr/bin/shasum -a 256 "$d/run.sh" | /usr/bin/cut -c1-64); fi
+        if [ "$h" != '\(hash)' ]; then /bin/rm -rf "$d"; echo 'SabunCopy: script changed' >&2; exit 72; fi
+        /bin/sh "$d/run.sh"; r=$?
+        /bin/rm -rf "$d"
+        exit $r
+        """
     }
 
     private static func command(for op: AdminOp, index i: Int) -> String {
@@ -110,36 +112,85 @@ enum Privileged {
 
     /// 標準の実行役：osascript で macOS のパスワード画面を出す。
     /// 命令と説明文は引数（argv）で渡すので、AppleScript の文字列に埋め込む必要がない。
+    /// - 中止（Task のキャンセル）されたら osascript を終わらせ、パスワード画面も閉じる。
+    /// - 終了は terminationHandler で受け、出力は別スレッドで読み切る（どちらかで止まらない）。
     static let osascript: Runner = { script, prompt in
-        await withCheckedContinuation { cont in
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            p.arguments = [
-                "-e", "on run argv",
-                "-e", "do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges",
-                "-e", "end run",
-                script, prompt,
-            ]
-            let out = Pipe(), err = Pipe()
-            p.standardOutput = out
-            p.standardError = err
-            do { try p.run() } catch {
-                cont.resume(returning: .failure(RunError(message: error.localizedDescription, cancelled: false)))
-                return
-            }
-            // 出力が多くてもパイプが詰まらないよう、終わるのを待つ前に読み切る
-            DispatchQueue.global().async {
-                let o = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                let e = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                p.waitUntilExit()
-                if p.terminationStatus == 0 {
-                    cont.resume(returning: .success(o))
-                } else {
-                    // -128 = ユーザがキャンセル
-                    cont.resume(returning: .failure(RunError(message: e.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                             cancelled: e.contains("-128"))))
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = [
+            "-e", "on run argv",
+            "-e", "do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges",
+            "-e", "end run",
+            script, prompt,
+        ]
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        let box = ProcessBox(p)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<Swift.Result<String, RunError>, Never>) in
+                let group = DispatchGroup()
+                let collected = Collected()
+                group.enter()
+                p.terminationHandler = { _ in group.leave() }
+                if box.terminatedByUs {   // 始める前に中止された
+                    cont.resume(returning: .failure(RunError(message: "", cancelled: true)))
+                    return
+                }
+                do { try p.run() } catch {
+                    cont.resume(returning: .failure(RunError(message: error.localizedDescription, cancelled: false)))
+                    return
+                }
+                // 書き込み側はこちらでは使わないので閉じる（読み取りが必ず終わるように）
+                try? out.fileHandleForWriting.close()
+                try? err.fileHandleForWriting.close()
+                group.enter()
+                DispatchQueue.global().async {
+                    collected.set(out: out.fileHandleForReading.readDataToEndOfFile()); group.leave()
+                }
+                group.enter()
+                DispatchQueue.global().async {
+                    collected.set(err: err.fileHandleForReading.readDataToEndOfFile()); group.leave()
+                }
+                group.notify(queue: .global()) {
+                    let (o, e) = collected.strings
+                    if p.terminationStatus == 0 {
+                        cont.resume(returning: .success(o))
+                    } else {
+                        // -128 = パスワード画面でキャンセル
+                        let cancelled = box.terminatedByUs || e.contains("-128")
+                        cont.resume(returning: .failure(RunError(message: e.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                                 cancelled: cancelled)))
+                    }
                 }
             }
+        } onCancel: {
+            box.terminate()
         }
+    }
+}
+
+/// 中止のときに osascript を終わらせるための入れ物
+private final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private let process: Process
+    private var stopped = false
+    init(_ p: Process) { process = p }
+    var terminatedByUs: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
+    func terminate() {
+        lock.lock(); stopped = true; lock.unlock()
+        if process.isRunning { process.terminate() }
+    }
+}
+
+/// 2 本の出力を別スレッドから受け取る入れ物
+private final class Collected: @unchecked Sendable {
+    private let lock = NSLock()
+    private var o = Data(), e = Data()
+    func set(out d: Data) { lock.lock(); o = d; lock.unlock() }
+    func set(err d: Data) { lock.lock(); e = d; lock.unlock() }
+    var strings: (String, String) {
+        lock.lock(); defer { lock.unlock() }
+        return (String(data: o, encoding: .utf8) ?? "", String(data: e, encoding: .utf8) ?? "")
     }
 }

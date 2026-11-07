@@ -27,6 +27,7 @@
 "コピーは完了しましたが、移動元をゴミ箱へ移せませんでした（%@）" = "Copied, but couldn’t move the source to Trash (%@)";
 "コピー元" = "Source";
 "コピー元をドロップ" = "Drop source here";
+"コピー元を読み取れません（アクセスが許可されていません）" = "Cannot read the source (access not allowed)";
 "コピー先" = "Destination";
 "コピー先に同名のフォルダがあるためコピーできません" = "Can’t copy: a folder with the same name exists at the destination";
 "コピー先のフォルダをドロップ" = "Drop destination folder here";
@@ -49,6 +50,7 @@
 "スキップ（コピー先を残す）: %@" = "Skipped (kept destination): %@";
 "スキップ（比較では同一でも内容が異なるため移動元を残しました）: %@" = "Skipped (same by comparison, but contents differ; source kept): %@";
 "スキップ（移動元は残します）: %@" = "Skipped (source kept): %@";
+"ディスクが取り外されたため中止しました: %@" = "Stopped because a disk was disconnected: %@";
 "ドロップモード" = "Drop mode";
 "ハッシュ照合" = "Verify with hash";
 "パスワードの確認がキャンセルされたため、コピーしませんでした: %@" = "Not copied because the password prompt was cancelled: %@";

@@ -27,6 +27,8 @@ EN = {
  "待機中": "Idle",
  "ウインドウを表示": "Show Window",
  "管理者権限が必要": "Needs administrator rights",
+ "コピー元を読み取れません（アクセスが許可されていません）": "Cannot read the source (access not allowed)",
+ "ディスクが取り外されたため中止しました: %@": "Stopped because a disk was disconnected: %@",
  "管理者権限が必要: %@": "Needs administrator rights: %@",
  "管理者権限が必要な %ld 件を処理します（パスワードを確認します）": "Processing %ld items that need administrator rights (password required)",
  "SabunCopy が管理者権限で %ld 件をコピーしようとしています。": "SabunCopy wants to copy %ld items with administrator rights.",
