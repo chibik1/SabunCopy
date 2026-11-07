@@ -151,6 +151,13 @@ final class CopyEngine: @unchecked Sendable {
     /// 管理者権限での実行役（テストで差し替える）
     var adminRunner: Privileged.Runner = Privileged.osascript
     private var adminEnabled = false
+    /// 照合の方式ごとの件数（テストと確認用）
+    private(set) var cloneVerifiedByIdentity = 0   // クローンと確認できたので読み直さなかった
+    private(set) var streamedCopies = 0            // 読みながらハッシュを取って書いた
+    /// テスト用：同じドライブでも、読みながら書く方式を使う
+    var testForceStream = false
+    /// テスト用：書き終えた直後（照合の前）にコピー先へ手を加える
+    var testAfterWrite: ((URL) -> Void)?
 
     // MARK: Plan
 
@@ -726,9 +733,7 @@ final class CopyEngine: @unchecked Sendable {
         let tmp = final.deletingLastPathComponent()
             .appendingPathComponent(".sabun-\(UUID().uuidString).tmp")
         do {
-            try fm.copyItem(at: item.source, to: tmp)
-            restoreTimestamp(item, at: tmp)
-            try verifyIfNeeded(item, copy: tmp, enabled: verify)   // 切り替える前に照合する
+            try copyAndVerify(item, to: tmp, verify: verify)   // 切り替える前に照合まで済ませる
             if !replacing {
                 try fm.moveItem(at: tmp, to: final)                // 同名ができていたら失敗する（上書きしない）
             } else if item.isSymlink {
@@ -745,6 +750,131 @@ final class CopyEngine: @unchecked Sendable {
             throw error
         }
         if replacing { restoreTimestamp(item, at: final) }
+    }
+
+    // MARK: Copy + verify
+
+    /// コピーの方式を自動で選ぶ。
+    /// - 同じ APFS ボリューム：OS のコピー（クローン）。コピー元と同じ fileContentIdentifier なら
+    ///   クローン（データを共有）なので、読み直さずに一致とみなす。違えば通常どおり読み比べる。
+    /// - それ以外：コピー元を読みながらハッシュを取り、そのまま書く。キャッシュを使わず書き、
+    ///   キャッシュを使わず読み直すので、照合はディスク上の内容を確かめる（F_NOCACHE）。
+    private func copyAndVerify(_ item: PlanItem, to tmp: URL, verify: Bool) throws {
+        let dir = tmp.deletingLastPathComponent()
+        if item.isSymlink {
+            try fm.copyItem(at: item.source, to: tmp)
+            return
+        }
+        if !testForceStream && canClone(from: item.source, into: dir) {
+            try fm.copyItem(at: item.source, to: tmp)
+            restoreTimestamp(item, at: tmp)
+            guard verify else { return }
+            if isClone(item.source, tmp) {
+                cloneVerifiedByIdentity += 1
+                return
+            }
+            testAfterWrite?(tmp)
+            try verifyIfNeeded(item, copy: tmp, enabled: true)
+            return
+        }
+        let sourceHash = try streamCopy(from: item.source, to: tmp, hashing: verify)
+        streamedCopies += 1
+        // 権限・日時・ACL・拡張属性（リソースフォークを含む）を写す
+        if copyfile(item.source.path, tmp.path, nil, copyfile_flags_t(COPYFILE_STAT | COPYFILE_ACL | COPYFILE_XATTR)) != 0 {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        restoreTimestamp(item, at: tmp)
+        testAfterWrite?(tmp)
+        if let expected = sourceHash {
+            let actual = try sha256Uncached(of: tmp)
+            if actual != expected {
+                throw CopyError(message: L("照合に失敗しました（コピー元とコピー先の内容が一致しません）"))
+            }
+        }
+    }
+
+    /// 同じボリュームで、そのボリュームがクローンに対応しているか
+    private func canClone(from source: URL, into dir: URL) -> Bool {
+        let keys: Set<URLResourceKey> = [.volumeIdentifierKey, .volumeSupportsFileCloningKey]
+        guard let s = try? source.resourceValues(forKeys: [.volumeIdentifierKey]),
+              let d = try? dir.resourceValues(forKeys: keys),
+              let sv = s.volumeIdentifier as? NSObject, let dv = d.volumeIdentifier as? NSObject,
+              d.volumeSupportsFileCloning == true else { return false }
+        return sv.isEqual(dv)
+    }
+
+    /// APFS では、クローンとその元だけが同じ fileContentIdentifier を持てる（Apple のドキュメント）
+    private func isClone(_ a: URL, _ b: URL) -> Bool {
+        func id(_ u: URL) -> Int64? {
+            var u = u
+            u.removeAllCachedResourceValues()
+            return (try? u.resourceValues(forKeys: [.fileContentIdentifierKey]))?.fileContentIdentifier
+        }
+        guard let x = id(a), let y = id(b) else { return false }
+        return x == y
+    }
+
+    private static let ioChunk = 8 * 1024 * 1024
+    private static let ioAlign = 16 * 1024   // ページ境界にそろえる（F_NOCACHE の読み書きを速くする）
+
+    /// コピー元を読みながら（必要なら）ハッシュを取り、一時ファイルに書く。キャッシュは使わない。
+    private func streamCopy(from src: URL, to dst: URL, hashing: Bool) throws -> String? {
+        let inFD = open(src.path, O_RDONLY)
+        guard inFD >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        defer { close(inFD) }
+        let outFD = open(dst.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard outFD >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        var closed = false
+        defer { if !closed { close(outFD) } }
+        _ = fcntl(inFD, F_NOCACHE, 1)
+        _ = fcntl(outFD, F_NOCACHE, 1)
+
+        let buf = UnsafeMutableRawPointer.allocate(byteCount: Self.ioChunk, alignment: Self.ioAlign)
+        defer { buf.deallocate() }
+        var hasher = SHA256()
+        while true {
+            if Task.isCancelled { throw CancellationError() }
+            let n = read(inFD, buf, Self.ioChunk)
+            if n < 0 {
+                if errno == EINTR { continue }
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            if n == 0 { break }
+            if hashing { hasher.update(bufferPointer: UnsafeRawBufferPointer(start: buf, count: n)) }
+            var off = 0
+            while off < n {
+                let w = write(outFD, buf + off, n - off)
+                if w < 0 {
+                    if errno == EINTR { continue }
+                    throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+                }
+                off += w
+            }
+        }
+        closed = true
+        if close(outFD) != 0 { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        return hashing ? hasher.finalize().map { String(format: "%02x", $0) }.joined() : nil
+    }
+
+    /// キャッシュを使わずに読んでハッシュを取る（ディスク上の内容を確かめる）
+    private func sha256Uncached(of url: URL) throws -> String {
+        let fd = open(url.path, O_RDONLY)
+        guard fd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        defer { close(fd) }
+        _ = fcntl(fd, F_NOCACHE, 1)
+        let buf = UnsafeMutableRawPointer.allocate(byteCount: Self.ioChunk, alignment: Self.ioAlign)
+        defer { buf.deallocate() }
+        var hasher = SHA256()
+        while true {
+            let n = read(fd, buf, Self.ioChunk)
+            if n < 0 {
+                if errno == EINTR { continue }
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            if n == 0 { break }
+            hasher.update(bufferPointer: UnsafeRawBufferPointer(start: buf, count: n))
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private func atomicRename(_ from: URL, to: URL) throws {

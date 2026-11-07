@@ -273,6 +273,47 @@ func runAll() async throws {
         check("キャンセル: 失敗として数える", summary.failed == 1 && summary.copied == 0)
         check("キャンセル: 何も書かない", names.isEmpty)
     }
+    do { // 照合の方式：同じ APFS ボリュームはクローンと確認して読み直さない
+        let base = root.appendingPathComponent("verify-clone")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("\(P)a.txt"), String(repeating: "A", count: 100_000), mtime: new)
+        let e = CopyEngine()
+        var o = CopyOptions(); o.verify = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        check("クローン: 照合を読み直しなしで済ませる", summary.copied == 1 && e.cloneVerifiedByIdentity == 1 && e.streamedCopies == 0)
+    }
+    do { // 照合の方式：読みながら書く（別のドライブと同じ経路）。属性も保つ
+        let base = root.appendingPathComponent("verify-stream")
+        let src = base.appendingPathComponent("src/proj")
+        let f = src.appendingPathComponent("\(P)b.bin")
+        try write(f, String(repeating: "B", count: 9_000_000), mtime: old)   // 8 MB の区切りをまたぐ大きさ
+        try fm.setAttributes([.posixPermissions: 0o640], ofItemAtPath: f.path)
+        _ = f.withUnsafeFileSystemRepresentation { p in setxattr(p, "com.sabun.test", "X", 1, 0, 0) }
+        let e = CopyEngine(); e.testForceStream = true
+        var o = CopyOptions(); o.verify = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        let d = base.appendingPathComponent("dst/proj/\(P)b.bin")
+        let attrs = try? fm.attributesOfItem(atPath: d.path)
+        var xa = [UInt8](repeating: 0, count: 4)
+        let xn = d.withUnsafeFileSystemRepresentation { p in getxattr(p, "com.sabun.test", &xa, 4, 0, 0) }
+        check("読みながら書く: 中身が同じ", (try? Data(contentsOf: d)) == (try? Data(contentsOf: f)) && summary.copied == 1 && e.streamedCopies == 1)
+        check("読みながら書く: 権限・更新日時・拡張属性を保つ",
+              (attrs?[.posixPermissions] as? NSNumber)?.intValue == 0o640
+              && ((attrs?[.modificationDate] as? Date).map { abs($0.timeIntervalSince(old)) < 2 } ?? false)
+              && xn == 1 && xa[0] == UInt8(ascii: "X"))
+    }
+    do { // 照合の方式：書いたあとに中身が変わったら失敗にし、何も残さない
+        let base = root.appendingPathComponent("verify-corrupt")
+        let src = base.appendingPathComponent("src/proj")
+        try write(src.appendingPathComponent("\(P)c.txt"), "ORIGINAL", mtime: new)
+        let e = CopyEngine(); e.testForceStream = true
+        e.testAfterWrite = { url in try? "BROKEN!!".write(to: url, atomically: false, encoding: .utf8) }
+        var o = CopyOptions(); o.verify = true
+        let summary = await quiet(e, [src], base.appendingPathComponent("dst"), o)
+        let names = (try? fm.contentsOfDirectory(atPath: base.appendingPathComponent("dst/proj").path)) ?? []
+        check("壊れたコピーを照合で見つける", summary.failed == 1 && summary.copied == 0)
+        check("照合に失敗したら何も残さない", names.isEmpty)
+    }
     // 10. 差分プレビューの判断が実行と一致する
     do {
         let (src, dstRoot) = try makeCase("analyze")
