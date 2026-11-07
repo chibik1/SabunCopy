@@ -164,9 +164,9 @@ final class CopyModel: ObservableObject {
 
     // MARK: Window
 
-    /// 外観はダークに固定する
+    /// 外観はライトに固定する（明るいすりガラスに暗い色を重ね、文字は白）
     func applyAppearance() {
-        NSApp.appearance = NSAppearance(named: .darkAqua)
+        NSApp.appearance = NSAppearance(named: .aqua)
     }
 
     /// 「最前面に固定」をウインドウに反映する

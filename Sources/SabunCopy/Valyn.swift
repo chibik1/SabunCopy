@@ -571,8 +571,13 @@ struct VGlassBackground: ViewModifier {
         if #available(macOS 15.0, *) {
             content
                 .containerBackground(for: .window) {
-                    // ウインドウのフォーカスが外れても、素材の見た目（不透明度）を変えない
-                    Rectangle().fill(material.materialActiveAppearance(.active))
+                    ZStack {
+                        // ウインドウのフォーカスが外れても、素材の見た目（不透明度）を変えない
+                        Rectangle().fill(material.materialActiveAppearance(.active))
+                        // 白い文字が読めるよう、暗めのガラス色を重ねる（以前のライトテーマと同じ）
+                        Color(red: 0.13, green: 0.15, blue: 0.19).opacity(0.62)
+                    }
+                    .environment(\.colorScheme, .light)
                 }
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         } else {

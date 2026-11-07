@@ -40,9 +40,11 @@ final class ServicesProvider: NSObject {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let services = ServicesProvider()
+    private let menuBar = MenuBarController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = services
+        menuBar.start()
         CopyModel.shared.applyAppearance()
         // コピー元の一覧などを保持しているので、ウインドウが見えないあいだもシステムに自動終了させない
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false

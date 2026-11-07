@@ -16,6 +16,7 @@
 "どちらを残すか" = "Which one to keep";
 "ぼかし" = "Blur";
 "ウインドウを他のウインドウより常に前に表示します" = "Keeps the window in front of other windows.";
+"ウインドウを表示" = "Show Window";
 "エラー" = "Error";
 "エラーがあったため、コピー先にしかないものは残しました" = "Because of errors, items only in the destination were kept";
 "クリア" = "Clear";
@@ -66,6 +67,7 @@
 "以降の競合すべてに同じ処理を適用" = "Apply to all remaining conflicts";
 "処理" = "Action";
 "処理したファイルはありません" = "No files processed";
+"処理中 %ld / %ld ファイル" = "Processing %ld / %ld files";
 "処理後に閉じる" = "Close when done";
 "別名で保存: %@ → %@" = "Saved as copy: %@ → %@";
 "別名保存 %ld" = "Saved as copy %ld";
@@ -84,7 +86,9 @@
 "差分の確認" = "Preview Changes";
 "差分を確認" = "Preview changes";
 "差分を確認できませんでした: %@" = "Couldn’t check differences: %@";
+"差分を確認中…" = "Checking differences…";
 "差分を解析中… %ld / %ld" = "Analyzing… %ld / %ld";
+"待機中" = "Idle";
 "新しい" = "Newer";
 "新しいほうだけ上書き" = "Overwrite if newer";
 "新規" = "New";
