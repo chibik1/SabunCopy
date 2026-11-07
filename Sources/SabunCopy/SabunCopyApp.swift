@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = services
         CopyModel.shared.applyAppearance()
+        // コピー元の一覧などを保持しているので、ウインドウが見えないあいだもシステムに自動終了させない
+        ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
+        ProcessInfo.processInfo.disableAutomaticTermination("SabunCopy keeps the source list")
     }
 
     /// Dock アイコンへのドロップ／「このアプリで開く」で渡されたものはコピー元に追加する

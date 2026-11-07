@@ -107,8 +107,8 @@ final class CopyModel: ObservableObject {
     @Published private(set) var recentFolders: [URL]
     @Published private(set) var favoriteFolders: [URL]
 
-    @Published var isRunning = false
-    @Published var isAnalyzing = false
+    @Published var isRunning = false { didSet { updateActivity() } }
+    @Published var isAnalyzing = false { didSet { updateActivity() } }
     @Published var analyzeDone = 0
     @Published var analyzeTotal = 0
     @Published var progress = CopyProgress()
@@ -125,6 +125,21 @@ final class CopyModel: ObservableObject {
     private var cancelRequested = false
 
     var busy: Bool { isRunning || isAnalyzing }
+
+    /// 処理中は「ユーザーが頼んだ作業の最中」とシステムに伝える。
+    /// userInitiated は、自動終了・即時終了の禁止とスリープの防止を含む（NSProcessInfo.h）。
+    /// これがないと、最小化してウインドウが見えないあいだに macOS に終了させられることがある。
+    private var activity: NSObjectProtocol?
+
+    private func updateActivity() {
+        if busy, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated,
+                                                              reason: "SabunCopy: copying files")
+        } else if !busy, let a = activity {
+            ProcessInfo.processInfo.endActivity(a)
+            activity = nil
+        }
+    }
     var canStart: Bool { destination != nil && !sources.isEmpty && !busy }
 
     init() {
@@ -344,11 +359,13 @@ final class CopyModel: ObservableObject {
         let body = parts.isEmpty ? L("処理したファイルはありません") : parts.joined(separator: " / ")
         summaryText = s.cancelled ? L("中止しました。 %@", body) : L("完了しました。 %@", body)
 
-        // エラーも中止もなく終わったときだけ、少し待ってからウインドウを閉じる
+        // エラーも中止もなく終わったときだけ、少し待ってからアプリを終了する。
+        // ウインドウを閉じる方式だと、最小化中のウインドウ（見えていない扱い）が残って終了しないため、
+        // アプリの終了を直接呼ぶ。
         if autoCloseWhenDone && !s.cancelled && s.failed == 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 guard let self = self, !self.busy, self.pending == nil else { return }
-                NSApp.windows.filter { $0.isVisible && $0.canBecomeMain }.forEach { $0.close() }
+                NSApp.terminate(nil)
             }
         }
     }

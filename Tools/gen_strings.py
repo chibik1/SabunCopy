@@ -65,8 +65,8 @@ EN = {
  "最前面に固定": "Keep on top",
  "ウインドウを他のウインドウより常に前に表示します": "Keeps the window in front of other windows.",
  "処理後に閉じる": "Close when done",
- "すべて終わったらウインドウを閉じます。エラーや中止のときは閉じません。閉じるとアプリも終了します":
-   "Closes the window when everything is done (not on errors or cancel). Closing the window quits the app.",
+ "すべて終わったらアプリを終了します（最小化中でも）。エラーや中止のときは終了しません":
+    "Quit the app when everything is done (even if minimized). Not on errors or cancel.",
  "中止": "Stop", "差分を確認": "Preview changes",
  "移動開始": "Start moving", "コピー開始": "Start copying",
  "差分を解析中… %ld / %ld": "Analyzing… %ld / %ld",

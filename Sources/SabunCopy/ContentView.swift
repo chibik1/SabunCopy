@@ -622,7 +622,7 @@ struct OptionsPopover: View {
             Toggle(isOn: $model.autoCloseWhenDone) {
                 Label("処理後に閉じる", systemImage: "rectangle.portrait.and.arrow.right")
             }
-            .help("すべて終わったらウインドウを閉じます。エラーや中止のときは閉じません。閉じるとアプリも終了します")
+            .help("すべて終わったらアプリを終了します（最小化中でも）。エラーや中止のときは終了しません")
         }
         .toggleStyle(VCheckStyle())
         .padding(14)

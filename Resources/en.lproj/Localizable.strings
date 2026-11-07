@@ -12,7 +12,7 @@
 "この内容でコピー開始" = "Copy with these settings";
 "この内容で移動開始" = "Move with these settings";
 "すべて" = "All";
-"すべて終わったらウインドウを閉じます。エラーや中止のときは閉じません。閉じるとアプリも終了します" = "Closes the window when everything is done (not on errors or cancel). Closing the window quits the app.";
+"すべて終わったらアプリを終了します（最小化中でも）。エラーや中止のときは終了しません" = "Quit the app when everything is done (even if minimized). Not on errors or cancel.";
 "どちらを残すか" = "Which one to keep";
 "ぼかし" = "Blur";
 "ウインドウを他のウインドウより常に前に表示します" = "Keeps the window in front of other windows.";
