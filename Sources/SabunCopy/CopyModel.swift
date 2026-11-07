@@ -38,9 +38,9 @@ struct PreviewResult: Identifiable {
     }
 }
 
-/// 比較が空欄のときの処理（同名ファイルの扱い）
+/// 比較が空欄のときの処理（同名ファイルの扱い）。「両方残す」は確認画面で 1 件ずつ選べる
 enum PolicyChoice: String, CaseIterable, Identifiable {
-    case ask, skip, overwrite, replace, keepBoth
+    case ask, skip, overwrite, replace
     var id: String { rawValue }
 
     var label: String {
@@ -49,7 +49,6 @@ enum PolicyChoice: String, CaseIterable, Identifiable {
         case .overwrite: return L("上書き")
         case .replace: return L("置き換え")
         case .skip: return L("スキップ")
-        case .keepBoth: return L("両方残す")
         }
     }
 
@@ -59,7 +58,6 @@ enum PolicyChoice: String, CaseIterable, Identifiable {
         case .ask: return nil
         case .overwrite, .replace: return .overwrite
         case .skip: return .skip
-        case .keepBoth: return .keepBoth
         }
     }
 }

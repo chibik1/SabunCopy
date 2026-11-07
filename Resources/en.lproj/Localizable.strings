@@ -65,6 +65,8 @@
 "中止" = "Stop";
 "中止しました。 %@" = "Cancelled. %@";
 "以降の競合すべてに同じ処理を適用" = "Apply to all remaining conflicts";
+"内容が同一のため上書きしませんでした: %@" = "Identical content, not overwritten: %@";
+"内容が同一のため上書きせず、移動元をゴミ箱へ: %@" = "Identical content, not overwritten; moved source to Trash: %@";
 "処理" = "Action";
 "処理したファイルはありません" = "No files processed";
 "処理中 %ld / %ld ファイル" = "Processing %ld / %ld files";

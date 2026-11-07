@@ -314,6 +314,29 @@ func runAll() async throws {
         check("壊れたコピーを照合で見つける", summary.failed == 1 && summary.copied == 0)
         check("照合に失敗したら何も残さない", names.isEmpty)
     }
+    do { // 上書き：中身がまったく同じなら書き直さない／移動なら移動元だけ片付ける／中身が違えば上書き
+        let base = root.appendingPathComponent("overwrite-identical")
+        let src = base.appendingPathComponent("src/proj")
+        let dstProj = base.appendingPathComponent("dst/proj")
+        try write(src.appendingPathComponent("\(P)same.txt"), "SAME", mtime: old)
+        try write(dstProj.appendingPathComponent("\(P)same.txt"), "SAME", mtime: old)
+        try write(src.appendingPathComponent("\(P)tricky.txt"), "AAAA", mtime: old)    // サイズ・日時は同じで中身が違う
+        try write(dstProj.appendingPathComponent("\(P)tricky.txt"), "BBBB", mtime: old)
+        let inode0 = (try? fm.attributesOfItem(atPath: dstProj.appendingPathComponent("\(P)same.txt").path))?[.systemFileNumber] as? Int
+        var o = CopyOptions(); o.initialPolicy = .overwrite
+        let summary = await quiet(CopyEngine(), [src], base.appendingPathComponent("dst"), o)
+        let inode1 = (try? fm.attributesOfItem(atPath: dstProj.appendingPathComponent("\(P)same.txt").path))?[.systemFileNumber] as? Int
+        check("上書き: 同一ファイルは書き直さない", inode0 != nil && inode0 == inode1 && summary.skipped == 1)
+        check("上書き: サイズ・日時が同じでも中身が違えば上書き",
+              text(dstProj.appendingPathComponent("\(P)tricky.txt")) == "AAAA" && summary.overwritten == 1)
+
+        var m = CopyOptions(); m.initialPolicy = .overwrite; m.operation = .move
+        try write(src.appendingPathComponent("\(P)tricky.txt"), "AAAA", mtime: old)   // 1 回目で上書き済み → 同一になる
+        let s2 = await quiet(CopyEngine(), [src], base.appendingPathComponent("dst"), m)
+        check("上書き（移動）: 同一なら移動元だけゴミ箱へ",
+              !fm.fileExists(atPath: src.appendingPathComponent("\(P)same.txt").path)
+              && text(dstProj.appendingPathComponent("\(P)same.txt")) == "SAME" && s2.failed == 0)
+    }
     // 10. 差分プレビューの判断が実行と一致する
     do {
         let (src, dstRoot) = try makeCase("analyze")

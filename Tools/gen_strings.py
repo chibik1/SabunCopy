@@ -20,6 +20,8 @@ EN = {
  "ぼかし": "Blur",
  "%ld 項目": "%ld items", "ドロップモード": "Drop mode", "通常の表示に戻す": "Back to normal view",
  "置き換え": "Replace",
+ "内容が同一のため上書きせず、移動元をゴミ箱へ: %@": "Identical content, not overwritten; moved source to Trash: %@",
+ "内容が同一のため上書きしませんでした: %@": "Identical content, not overwritten: %@",
  "処理中 %ld / %ld ファイル": "Processing %ld / %ld files",
  "差分を確認中…": "Checking differences…",
  "待機中": "Idle",

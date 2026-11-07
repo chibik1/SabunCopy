@@ -558,6 +558,20 @@ final class CopyEngine: @unchecked Sendable {
             }
 
         case .overwrite:
+            // 中身がまったく同じなら書き直さない（速く、確実）。
+            // サイズと更新日時が同じときだけ中身を比べる（違えば比べるまでもなく上書き）
+            let sameMeta = !item.isSymlink && srcSnap.size == dstSnap.size
+                && abs(srcSnap.modified.timeIntervalSince(dstSnap.modified)) < 2
+            let sameContent = sameMeta ? try contentsEqual(srcSnap, dstSnap) : false
+            if sameContent {
+                if isMove {
+                    try trashSource(item)
+                    log(.skipped, L("内容が同一のため上書きせず、移動元をゴミ箱へ: %@", item.relativePath))
+                    return .skippedRemoved
+                }
+                log(.skipped, L("内容が同一のため上書きしませんでした: %@", item.relativePath))
+                return .skipped
+            }
             try copyViaTemp(item, to: dst, verify: verifyNow, replacing: true, as: .overwritten)
             log(.overwritten, rulePhrase.isEmpty ? L("上書き: %@", item.relativePath)
                                               : L("上書き（%@）: %@", rulePhrase, item.relativePath))
@@ -575,6 +589,7 @@ final class CopyEngine: @unchecked Sendable {
 
     private func contentsEqual(_ s: FileSnapshot, _ d: FileSnapshot) throws -> Bool {
         guard s.size == d.size else { return false }
+        if isClone(s.url, d.url) { return true }   // クローン同士は中身を共有している（読まずに分かる）
         return try sha256(of: s.url) == sha256(of: d.url)
     }
 
