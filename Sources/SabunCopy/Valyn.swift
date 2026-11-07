@@ -535,6 +535,9 @@ struct VWindowStyler: NSViewRepresentable {
 
         private func apply(to window: NSWindow) {
             window.titlebarAppearsTransparent = true
+            // 「最前面に固定」：起動時の onAppear ではウインドウがまだ無いことがあるので、ここでも当てる
+            let m = CopyModel.shared
+            window.level = (m.alwaysOnTop || m.dropMode) ? .floating : .normal
             window.titleVisibility = .hidden            // タイトルは SwiftUI 側で中央に描く
             window.titlebarSeparatorStyle = .none
             // 背景（containerBackground）が信号ボタンを覆わないよう、タイトルバーの層を最前面に出す
@@ -558,12 +561,11 @@ struct VGlassBackground: ViewModifier {
     var blur: Double
 
     private var material: Material {
+        // 透け感を優先して、薄い素材を中心に使う
         switch Int((blur * 4).rounded()) {
-        case ...0: return .ultraThinMaterial
-        case 1: return .thinMaterial
-        case 2: return .regularMaterial
-        case 3: return .thickMaterial
-        default: return .ultraThickMaterial
+        case ...1: return .ultraThinMaterial
+        case 2, 3: return .thinMaterial
+        default: return .regularMaterial
         }
     }
 
@@ -574,8 +576,9 @@ struct VGlassBackground: ViewModifier {
                     ZStack {
                         // ウインドウのフォーカスが外れても、素材の見た目（不透明度）を変えない
                         Rectangle().fill(material.materialActiveAppearance(.active))
+                            .opacity(0.75)   // 素材を少し透かし、ぼけていない背景も混ぜる（透け感を上げる）
                         // 白い文字が読めるよう、暗めのガラス色を重ねる（以前のライトテーマと同じ）
-                        Color(red: 0.13, green: 0.15, blue: 0.19).opacity(0.62)
+                        Color(red: 0.13, green: 0.15, blue: 0.19).opacity(0.45)
                     }
                     .environment(\.colorScheme, .light)
                 }
