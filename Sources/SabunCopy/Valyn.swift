@@ -583,6 +583,8 @@ struct VGlassBackground: ViewModifier {
                     .environment(\.colorScheme, .light)
                 }
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+                // OS 標準のタイトルを外す（白いタイトルは自前で描いている。残すと暗い文字が重なって見える）
+                .toolbar(removing: .title)
         } else {
             content
         }
