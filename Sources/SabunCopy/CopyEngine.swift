@@ -779,10 +779,16 @@ final class CopyEngine: @unchecked Sendable {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var hasher = SHA256()
+        // 読んだデータを 1 回ごとに解放する（区切りが無いと、読んだ分がファイルの大きさまで溜まり続ける。
+        // 2 GB のファイルで最大 2 GB → 10 MB になることを測って確認）
         while true {
-            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
-            if chunk.isEmpty { break }
-            hasher.update(data: chunk)
+            let more: Bool = try autoreleasepool {
+                let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+                if chunk.isEmpty { return false }
+                hasher.update(data: chunk)
+                return true
+            }
+            if !more { break }
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
